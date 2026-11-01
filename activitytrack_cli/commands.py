@@ -9,7 +9,7 @@ from activitytrack.pairing import PairError, PairLink
 from activitytrack.texts import hm
 from activitytrack.work import PAUSE, STOP, SUSPEND, TO_COMPLETE, TRAVEL, WORK, StartRequest
 
-from .app import CliError, parse_day, parse_minute, parse_when
+from activitytrack.app import InputError as CliError, parse_day, parse_minute, parse_when
 from .term import MODE_COLOURS
 
 PERIODS = {"today": -1, "24h": 24, "3d": 72, "7d": 168, "30d": 720, "all": 0}

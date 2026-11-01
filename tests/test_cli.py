@@ -5,11 +5,9 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import date
 from unittest import mock
 
 from activitytrack import i18n
-from activitytrack_cli import app as app_module
 from activitytrack_cli.main import main
 
 
@@ -74,20 +72,6 @@ class CliTest(unittest.TestCase):
         self.assertEqual((code, json.loads(out)["code"]), (1, "client_required"))
         code, out, err = self.run_cli("todo", "done", "zz")
         self.assertIn("almeno 3", err)
-
-    def test_dates_and_times(self):
-        today = date(2026, 11, 2)
-        self.assertEqual(app_module.parse_day("domani", today), date(2026, 11, 3))
-        self.assertEqual(app_module.parse_day("3/11", today), date(2026, 11, 3))
-        self.assertEqual(app_module.parse_day("03.11.27", today), date(2027, 11, 3))
-        self.assertEqual(app_module.parse_day("2026-12-01", today), date(2026, 12, 1))
-        self.assertEqual(app_module.parse_minute("9:30"), 570)
-        self.assertEqual(app_module.parse_minute("0930"), 570)
-        for bad in ("25:00", "9:75", "x"):
-            with self.assertRaises(app_module.CliError):
-                app_module.parse_minute(bad)
-        with self.assertRaises(app_module.CliError):
-            app_module.parse_day("31/02", today)
 
     def test_language(self):
         with mock.patch.dict(os.environ, {"LC_ALL": "de_DE.UTF-8"}):

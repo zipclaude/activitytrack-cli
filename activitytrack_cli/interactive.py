@@ -9,7 +9,7 @@ from activitytrack import texts
 from activitytrack.i18n import _
 from activitytrack.work import STOP, TO_COMPLETE, TRAVEL, WORK, StartRequest, WorkError
 
-from .app import CliError, describe_error, one_line, parse_when
+from activitytrack.app import InputError as CliError, describe_error, one_line, parse_when
 from .commands import show_entry
 from .term import ask, choose, confirm
 

@@ -152,7 +152,7 @@ def main(argv=None):
     out = Out()
     app = None
     try:
-        from .app import App
+        from activitytrack.app import App
         app = App(folder, dev=args.dev)
         if args.interactive or args.command == "interactive":
             from .interactive import run
@@ -161,9 +161,9 @@ def main(argv=None):
     except KeyboardInterrupt:
         return 130
     except Exception as e:
-        from .app import CliError, describe_error
+        from activitytrack.app import InputError, describe_error
         from activitytrack.work import WorkError
-        if isinstance(e, (CliError, WorkError)):
+        if isinstance(e, (InputError, WorkError)):
             if args.json:
                 print(json.dumps({"error": describe_error(e), "code": getattr(e, "code", "")}, ensure_ascii=False))
             else:
