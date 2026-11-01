@@ -98,8 +98,9 @@ def start(app, args, out):
         req.client, req.company = t.get("clientUid"), t.get("companyUid")
     if args.until is None and args.others != "keep":
         cmd = SUSPEND if args.others == "suspend" else STOP
-        req.others = {e["uid"]: (STOP if e.get("mode") == PAUSE else cmd) for e in app.work.running()
-                      if e.get("status") == "ACTIVE"}
+        # a paused activity cannot be suspended: left as it is, as the desktop does (stopped with --others stop)
+        req.others = {e["uid"]: cmd for e in app.work.running()
+                      if e.get("status") == "ACTIVE" and (cmd == STOP or e.get("mode") != PAUSE)}
     uid = app.work.start(req)
     info = app.entry_info(app.work.entry(uid))
     _emit(args, out, info, lambda: (out.line(_("Avviata:")), show_entry(app, out, info)))

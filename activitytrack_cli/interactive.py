@@ -132,7 +132,7 @@ def _new(app, out):
     if running and app.work.policy.feature("concurrentEntries"):
         keep = confirm(out, _("Lasciare in corso le attività già avviate?"))
         if not keep:
-            req.others = {e["uid"]: ("STOP" if e.get("mode") == "PAUSE" else "SUSPEND") for e in running}
+            req.others = {e["uid"]: "SUSPEND" for e in running if e.get("mode") != "PAUSE"}
     app.work.start(req)
 
 
@@ -169,7 +169,8 @@ def _todos(app, out):
     act = acts[j][1]
     if act == "start":
         running = [e for e in app.work.running() if e.get("status") == "ACTIVE"]
-        others = {e["uid"]: ("STOP" if e.get("mode") == "PAUSE" else "SUSPEND") for e in running}
+        # as the desktop: the ones at work or travelling suspended, a paused one left as it is
+        others = {e["uid"]: "SUSPEND" for e in running if e.get("mode") != "PAUSE"}
         app.work.start(StartRequest(activity=t.get("title") or "", client=t.get("clientUid"),
                                     company=t.get("companyUid"), todo=t["uid"], others=others))
     elif act == "done":

@@ -53,6 +53,17 @@ class CliTest(unittest.TestCase):
         home = self.json("list", "--period", "all", "--show", "done")
         self.assertEqual(sum(len(g["items"]) for g in home), 2)
 
+    def test_the_activities_running_when_another_starts(self):
+        a = self.json("start", "A", "-c", "Uno")
+        b = self.json("start", "B", "-c", "Due")
+        self.json("pause", b["id"])
+        c = self.json("start", "C", "-c", "Tre")
+        modes = {r["id"]: (r["status"], r["mode"]) for r in self.json("status")["running"]}
+        # the one at work suspended, the paused one left as it is (as the desktop)
+        self.assertEqual(modes[a["id"]], ("SUSPENDED", None))
+        self.assertEqual(modes[b["id"]], ("ACTIVE", "PAUSE"))
+        self.assertEqual(modes[c["id"]], ("ACTIVE", "WORK"))
+
     def test_to_dos(self):
         t = self.json("todo", "add", "Rinnovo", "certificati", "-c", "Hotel", "--plan", "domani 9:30 45",
                       "--priority", "2")
