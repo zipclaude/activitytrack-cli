@@ -1,0 +1,7 @@
+activitytrack-cli (0.9.4~beta2) unstable; urgency=medium
+
+  * First release: activities, to-dos, sync and pairing from the command
+    line, an interactive mode with numbered lists, JSON for scripts; on the
+    data of the desktop tray application (python3-activitytrack).
+
+ -- ActivityTrack <flavio-claude@zipman.it>  Sun, 01 Nov 2026 23:00:00 +0100

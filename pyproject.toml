@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "activitytrack-cli"
+dynamic = ["version"]
+description = "ActivityTrack from the command line"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.11"
+# the library brings cryptography, keyring and, on Windows, tzdata
+dependencies = ["activitytrack>=0.9.4b2"]
+
+[project.scripts]
+activitytrack = "activitytrack_cli.main:main"
+
+[tool.setuptools]
+packages = ["activitytrack_cli"]
+
+[tool.setuptools.package-data]
+activitytrack_cli = ["locale/*.json"]
+
+[tool.setuptools.dynamic]
+version = { attr = "activitytrack_cli.__version__" }
