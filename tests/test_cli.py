@@ -2,7 +2,6 @@
 import contextlib
 import io
 import json
-import os
 import tempfile
 import unittest
 from unittest import mock
@@ -14,8 +13,8 @@ from activitytrack_cli.main import main
 class CliTest(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
-        # the texts the tests read: Italian, whatever the machine's language
-        self.env = mock.patch.dict(os.environ, {"LC_ALL": "it_IT.UTF-8"})
+        # the texts the tests read: Italian, whatever the machine's language (on Windows not from LC_ALL)
+        self.env = mock.patch("activitytrack_cli.main.system_language", return_value="it")
         self.env.start()
 
     def tearDown(self):
@@ -85,6 +84,6 @@ class CliTest(unittest.TestCase):
         self.assertIn("almeno 3", err)
 
     def test_language(self):
-        with mock.patch.dict(os.environ, {"LC_ALL": "de_DE.UTF-8"}):
+        with mock.patch("activitytrack_cli.main.system_language", return_value="de"):
             code, out, err = self.run_cli("status")
         self.assertIn("Keine laufende Tätigkeit", out)
