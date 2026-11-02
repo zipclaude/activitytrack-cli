@@ -85,18 +85,21 @@ def choose(out, title, options, allow_back=True):
             return None
         if answer in ("", "0", "q"):
             return None
-        if answer.isdigit() and 1 <= int(answer) <= len(options):
+        # ASCII digits only: "²" is a digit to isdigit() but not to int()
+        if answer.isascii() and answer.isdecimal() and 1 <= int(answer) <= len(options):
             return int(answer) - 1
         out.error(_("Scegli un numero da 1 a %d.") % len(options))
 
 
 def ask(out, label, default=""):
-    """A free answer; the default when empty. None at the end of input."""
-    hint = f" [{default}]" if default else ""
+    """A free answer; the default when empty, nothing with "-" (when there is one). None at the end of input."""
+    hint = f" [{default}] " + _("(«-» per svuotare)") if default else ""
     try:
         answer = input(f"{label}{hint}: ").strip()
     except EOFError:
         return None
+    if default and answer == "-":
+        return ""
     return answer or default
 
 

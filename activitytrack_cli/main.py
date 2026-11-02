@@ -8,6 +8,7 @@ what scripts read.
 
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from activitytrack.i18n import _, add_catalogs, set_language, system_language
 from . import __version__
 
 EXIT_ERROR = 1
+# the states of --show
+SHOW = ("todo", "missing", "done", "ignored")
 
 
 def _language(folder):
@@ -25,9 +28,13 @@ def _language(folder):
     forced = None
     db = Path(folder) / "activitytrack.sqlite3"
     if db.exists():
-        store = Store(db)
-        forced = stored(store).language
-        store.close()
+        try:
+            store = Store(db)
+            forced = stored(store).language
+            store.close()
+        except (sqlite3.Error, OSError):
+            # the command says what is wrong with the data, in the system's language
+            pass
     add_catalogs(Path(__file__).with_name("locale"))
     return set_language(forced or system_language())
 
@@ -111,7 +118,9 @@ def parser():
 
     sub.add_parser("sync", help=_("sincronizza ora"))
     c = sub.add_parser("pair", help=_("associa il PC a un server ActivityTrack Web"))
-    c.add_argument("link", help=_("il collegamento della pagina «Dispositivi» del web"))
+    c.add_argument("link", nargs="?", help=_(
+        "il collegamento della pagina «Dispositivi» del web; senza, viene chiesto senza mostrarlo "
+        "(«-»: letto dallo standard input)"))
     sub.add_parser("unpair", help=_("dissocia il PC (i dati restano)"))
     sub.add_parser("interactive", help=_("modalità interattiva, a liste"))
     return p
@@ -164,12 +173,22 @@ def main(argv=None):
         from activitytrack.app import InputError, describe_error
         from activitytrack.work import WorkError
         if isinstance(e, (InputError, WorkError)):
-            if args.json:
-                print(json.dumps({"error": describe_error(e), "code": getattr(e, "code", "")}, ensure_ascii=False))
-            else:
-                out.error(describe_error(e))
-            return EXIT_ERROR
-        raise
+            text, code = describe_error(e), getattr(e, "code", "")
+        elif isinstance(e, sqlite3.Error):
+            # a database that is not one, or locked beyond the timeout
+            text, code = _("I dati locali non sono leggibili (%s): %s") % (folder, e), "database"
+        elif isinstance(e, OSError):
+            text, code = _("Errore di sistema: %s") % e, "system"
+        elif isinstance(e, ValueError):
+            # an input the checks above let through: said, not a traceback
+            text, code = _("Valore non valido: %s") % e, "value"
+        else:
+            raise
+        if args.json:
+            print(json.dumps({"error": text, "code": code}, ensure_ascii=False))
+        else:
+            out.error(text)
+        return EXIT_ERROR
     finally:
         if app is not None:
             app.store.close()

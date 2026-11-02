@@ -11,7 +11,7 @@ share the data folder, the pairing and the token, through the library
 does shows at once in the tray icon.
 
 ```sh
-activitytrack pair 'activitytrack://pair?v=1&u=…'      # the link of the web's Dispositivi page
+activitytrack pair                                     # paste the link of the web's Dispositivi page
 activitytrack start Configurazione VPN -c "Comune di Valdora" -t urgente
 activitytrack pause; activitytrack resume
 activitytrack stop                                     # complete it if details are missing
@@ -21,6 +21,9 @@ activitytrack todo start b84
 activitytrack -i                                       # interactive, numbered lists in colour
 activitytrack --json status                            # for scripts
 ```
+
+`pair` asks for the link without showing it: given as an argument, it would stay in the
+shell's history (`pair -` reads it from the standard input, for scripts).
 
 `man activitytrack` has every command.
 

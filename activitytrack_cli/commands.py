@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """What each command does, on the library's rules; the text or JSON it prints."""
 
+import getpass
 import json
+import sys
 
 from activitytrack import texts
 from activitytrack.i18n import _
@@ -23,26 +25,44 @@ def dispatch(app, args, out):
         # the data stay local until a pairing: allowed, but said
         out.error(_("Attenzione: il PC non è associato a un server; i dati restano qui."))
     handler = HANDLERS[command]
+    writes = command in WRITES and not (command == "todo" and args.todo_command in (None, "list"))
+    # the JSON of a change waits for the sync, to say how it went
+    args.held = [] if writes and args.json else None
     result = handler(app, args, out)
-    if command in WRITES and not (command == "todo" and args.todo_command in (None, "list")):
-        _after_change(app, args, out)
+    if writes:
+        state = _after_change(app, args, out)
+        for data in args.held or []:
+            _print_json({**data, "sync": state} if isinstance(data, dict) else data)
     return result or 0
 
 
+def _print_json(data):
+    print(json.dumps(data, ensure_ascii=False, indent=1))
+
+
 def _emit(args, out, data, text):
-    if args.json:
-        print(json.dumps(data, ensure_ascii=False, indent=1))
-    else:
+    if not args.json:
         text()
+    elif getattr(args, "held", None) is not None:
+        args.held.append(data)
+    else:
+        _print_json(data)
 
 
 def _after_change(app, args, out):
-    """The change leaves at once; without a network at the next sync."""
-    if args.no_sync or not app.paired:
-        return
+    """
+    The change leaves at once; without a network at the next sync. The
+    state of the sync, None when not tried (--no-sync); in text a failure
+    is said on stderr, in JSON it is the "sync" of the answer.
+    """
+    if not app.paired:
+        return "unpaired"
+    if args.no_sync:
+        return None
     state, detail = app.sync(full=True)
     if state not in ("ok", "idle") and not args.json:
         out.error(texts.sync_state(app.session, state, detail))
+    return state
 
 
 # ---- status ----
@@ -161,7 +181,12 @@ def delete(app, args, out):
 # ---- the Home list and the to-dos ----
 
 def home(app, args, out, todos_only=False):
-    show = [s.strip().upper() for s in args.show.split(",") if s.strip()]
+    from .main import SHOW
+    show = [s.strip().lower() for s in args.show.split(",") if s.strip()]
+    for s in show:
+        if s not in SHOW:
+            raise CliError(_("Stato sconosciuto in --show: «%s» (validi: %s).") % (s, ", ".join(SHOW)))
+    show = [s.upper() for s in show]
     company = app.find("company", args.company)["uid"] if args.company else None
     groups = app.todos.home(show, PERIODS[args.period], company, args.tag)
     data = []
@@ -208,20 +233,26 @@ def _todo_kwargs(app, args, existing=None):
                     else (t.get("refs") or "")),
               priority=args.priority if args.priority is not None else t.get("priority"))
     if args.due is not None:
-        parts = args.due.split()
+        parts = args.due.split() or [""]
         kw["due_date"] = parse_day(parts[0])
         kw["due_min"] = parse_minute(parts[1]) if len(parts) > 1 else None
     elif t.get("dueDate"):
         kw["due_date"], kw["due_min"] = parse_day(t["dueDate"]), t.get("dueTimeMin")
     if args.plan is not None:
-        parts = args.plan.split()
+        parts = args.plan.split() or [""]
         kw["plan_date"] = parse_day(parts[0])
         kw["plan_min"] = parse_minute(parts[1]) if len(parts) > 1 else None
-        kw["duration_min"] = int(parts[2]) if len(parts) > 2 else None
+        kw["duration_min"] = _minutes(parts[2]) if len(parts) > 2 else None
     elif t.get("planDate"):
         kw["plan_date"] = parse_day(t["planDate"])
         kw["plan_min"], kw["duration_min"] = t.get("planStartMin"), t.get("durationMin")
     return kw
+
+
+def _minutes(text):
+    if not (text.isascii() and text.isdecimal()):
+        raise CliError(_("Durata non valida: «%s» (in minuti, per esempio 45).") % text)
+    return int(text)
 
 
 def todo(app, args, out):
@@ -280,9 +311,25 @@ def sync(app, args, out):
     return 0 if state in ("ok", "idle") else 1
 
 
+def _pair_link(args):
+    """
+    The link: from the prompt, not shown (the code would stay in the shell's
+    history and, while it runs, in the processes list); from the standard
+    input with "-" or when it is not a terminal; as the argument, as before.
+    """
+    if args.link is not None and args.link != "-":
+        return args.link
+    if args.link is None and sys.stdin.isatty():
+        try:
+            return getpass.getpass(_("Collegamento della pagina «Dispositivi» del web (non viene mostrato): "))
+        except EOFError:
+            return ""
+    return sys.stdin.readline()
+
+
 def pair(app, args, out):
     try:
-        link = PairLink.parse(args.link, allow_http=args.dev)
+        link = PairLink.parse(_pair_link(args), allow_http=args.dev)
         account = app.session.pair(link)
     except PairError as e:
         raise CliError(texts.pair_error(e.code)) from None
