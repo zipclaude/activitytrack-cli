@@ -28,7 +28,7 @@ activitytrack --json status                            # for scripts
 
 From the [releases](https://github.com/zipclaude/activitytrack-cli/releases):
 
-- **Debian 13 / 14, Ubuntu 24.04 / 26.04**: `sudo apt install ./python3-activitytrack_<version>-<distro>_all.deb ./activitytrack-cli_<version>-<distro>_all.deb`
+- **Debian 13 / 14, Ubuntu 24.04 / 26.04**: `sudo apt install ./python3-activitytrack_<version>-1-<distro>_all.deb ./activitytrack-cli_<version>-1-<distro>_all.deb`
   (the library from its own release);
 - **Windows 10 / 11**: `activitytrack-cli-<version>-windows.zip`, `activitytrack.exe` in a folder of the PATH;
 - **elsewhere**: `pip install` the library, then the tarball.
