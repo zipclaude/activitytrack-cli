@@ -31,9 +31,21 @@ or
 .TP
 .B \-i, \-\-interactive
 Numbered lists to choose from, in colour when the terminal supports it.
+Where a question shows the present value in brackets, an empty answer keeps
+it and
+.B \-
+clears it.
 .TP
 .B \-\-json
-Print the result as JSON, for scripts.
+Print the result as JSON, for scripts. After a change the object has a
+.B sync
+field: the state of the sync that followed (ok, idle, offline, failed,
+revoked, incompatible), unpaired when the PC is not paired, null with
+.BR \-\-no\-sync .
+An error is an object with
+.B error
+(the message) and
+.BR code .
 .TP
 .B \-\-no\-sync
 Do not sync after a change.
@@ -63,7 +75,8 @@ Complete an activity whose details were missing.
 Change an activity.
 .TP
 .BR reopen ", " delete " \fIid\fR"
-Reopen a closed activity; delete one (asks, unless \fB\-\-yes\fR).
+Reopen a closed activity; delete one (asks, unless \fB\-\-yes\fR; with
+\fB\-\-json\fR it does not ask).
 .TP
 .BR list " [\fB\-\-period\fR today|24h|3d|7d|30d|all] [\fB\-\-show\fR todo,missing,done,ignored] [\fB\-\-company\fR \fIid\fR] [\fB\-\-tag\fR \fItag\fR]"
 The Home list of the app: to-dos and stopped activities.
@@ -73,13 +86,21 @@ The to-dos; a new one.
 .TP
 .BR "todo edit" ", " start ", " done ", " ignore ", " reopen ", " postpone " [\fIminutes\fR], " delete " \fIid\fR"
 Work a to-do.
+.B todo delete
+does not ask for a confirmation.
 .TP
 .B sync
 Sync now.
 .TP
-.BI pair " link"
+.BR pair " [\fIlink\fR|\fB\-\fR]"
 Pair this PC with an ActivityTrack Web server: the link of the web's
-Dispositivi page.
+Dispositivi page. Without it, the link is asked and not shown while it is
+pasted: the way to prefer, as a link on the command line stays in the
+shell's history and, while the command runs, in the list of the processes,
+until its code is used or expires.
+.B \-
+reads it from the standard input, as does a standard input that is not a
+terminal.
 .TP
 .B unpair
 Unpair; the data stay.
@@ -95,6 +116,7 @@ The language (it, en, de, es), unless the policy fixes it.
 .I ~/.local/share/activitytrack/
 The data shared with the desktop application.
 .SH EXIT STATUS
-0 done; 1 refused (the message says why); 2 wrong usage.
+0 done; 1 refused or failed (the message says why, without a traceback:
+also for data that cannot be read); 2 wrong usage.
 .SH AUTHOR
 The ActivityTrack contributors, https://github.com/zipclaude/activitytrack-cli

@@ -4,6 +4,7 @@ import io
 import json
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from activitytrack import i18n
@@ -87,3 +88,62 @@ class CliTest(unittest.TestCase):
         with mock.patch("activitytrack_cli.main.system_language", return_value="de"):
             code, out, err = self.run_cli("status")
         self.assertIn("Keine laufende Tätigkeit", out)
+
+    def test_the_sync_in_the_json_of_a_change(self):
+        # not paired: the change stays here, and the answer says so
+        self.assertEqual(self.json("start", "A", "-c", "Uno")["sync"], "unpaired")
+        self.assertNotIn("sync", self.json("list"))
+
+    def test_input_that_is_refused_without_a_traceback(self):
+        code, out, err = self.run_cli("todo", "add", "Rinnovo", "--plan", "domani 9:30 quaranta")
+        self.assertEqual(code, 1)
+        self.assertIn("Durata non valida: «quaranta»", err)
+        code, out, err = self.run_cli("todo", "add", "Rinnovo", "--plan", "domani 9:30 ²")
+        self.assertIn("Durata non valida", err)
+        code, out, err = self.run_cli("list", "--show", "todo,pippo")
+        self.assertEqual(code, 1)
+        self.assertIn("«pippo» (validi: todo, missing, done, ignored)", err)
+
+    def test_a_database_that_is_not_one(self):
+        Path(self.dir.name, "activitytrack.sqlite3").write_bytes(b"garbage!" * 100)
+        code, out, err = self.run_cli("status")
+        self.assertEqual(code, 1)
+        self.assertIn("I dati locali non sono leggibili", err)
+        self.assertNotIn("Traceback", err)
+        code, out, err = self.run_cli("--json", "status")
+        self.assertEqual(json.loads(out)["code"], "database")
+
+    def test_the_pairing_link_not_on_the_command_line(self):
+        link = "activitytrack://pair?v=2&u=https%3A%2F%2Fa.b&c=x"
+        with mock.patch("sys.stdin", io.StringIO(link + "\n")):
+            code, out, err = self.run_cli("pair", "-")
+        # read: refused for its version, so no server is needed
+        self.assertIn("Collegamento di una versione", err)
+        tty = mock.Mock(isatty=lambda: True)
+        with mock.patch("sys.stdin", tty), mock.patch("getpass.getpass", return_value=link) as hidden:
+            code, out, err = self.run_cli("pair")
+        hidden.assert_called_once()
+        self.assertIn("Collegamento di una versione", err)
+        code, out, err = self.run_cli("pair", link)
+        self.assertIn("Collegamento di una versione", err)
+
+
+class TermTest(unittest.TestCase):
+    def setUp(self):
+        from activitytrack_cli.term import Out
+        self.out = Out(io.StringIO(), colour=False)
+
+    def test_choose_takes_ascii_digits_only(self):
+        from activitytrack_cli.term import choose
+        with mock.patch("builtins.input", side_effect=["²", "2"]), contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(choose(self.out, "T", ["a", "b"]), 1)
+        self.assertIn("Scegli un numero", err.getvalue())
+
+    def test_ask_clears_with_a_dash(self):
+        from activitytrack_cli.term import ask
+        with mock.patch("builtins.input", side_effect=["-", "", "-"]) as prompt:
+            self.assertEqual(ask(self.out, "Descrizione", "VPN"), "")
+            self.assertIn("«-»", prompt.call_args[0][0])
+            self.assertEqual(ask(self.out, "Descrizione", "VPN"), "VPN")
+            # without a value to clear, a dash is a dash
+            self.assertEqual(ask(self.out, "Descrizione"), "-")
