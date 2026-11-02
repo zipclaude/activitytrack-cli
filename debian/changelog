@@ -1,3 +1,12 @@
+activitytrack-cli (0.9.4~beta5-1) unstable; urgency=medium
+
+  * Security review fixes: the pairing link asked hidden (not on the
+    command line); clean messages instead of tracebacks; --json answers
+    carry the sync state; "-" clears a field in the interactive mode.
+  * On the library 0.9.4-beta5; Windows build with pinned libraries.
+
+ -- ActivityTrack <flavio-claude@zipman.it>  Mon, 02 Nov 2026 18:55:28 +0100
+
 activitytrack-cli (0.9.4~beta4-1) unstable; urgency=medium
 
   * Dates and times in the format chosen on the desktop (library
