@@ -78,7 +78,7 @@ class CliTest(unittest.TestCase):
 
     # ---- updates from the paired server ----
 
-    def server_announces(self, version="9.9.9", beta=None, key="signer", component="cli-deb"):
+    def server_announces(self, version="9.9.9", beta=None, key="signer", component="cli-tar"):
         """The data folder paired, with a manifest signed by the pinned key in the store."""
         import datetime
         from cryptography import x509
@@ -119,7 +119,6 @@ class CliTest(unittest.TestCase):
             stack.enter_context(mock.patch("activitytrack.sync.Runner.refresh_update", return_value=""))
             stack.enter_context(mock.patch("activitytrack.session.Session.http", return_value=Down()))
             stack.enter_context(mock.patch("activitytrack.manifest.from_package_manager", return_value=False))
-            stack.enter_context(mock.patch("activitytrack.updates.component", return_value="cli-deb"))
             return self.run_cli(*(["--json"] if as_json else []), "update", *argv)
 
     def test_update_needs_a_pairing_and_the_servers_key(self):
@@ -153,17 +152,17 @@ class CliTest(unittest.TestCase):
         data = json.loads(out)
         self.assertEqual(code, 0, err)
         self.assertEqual(Path(data["downloaded"]).read_bytes(), b"the package")
-        self.assertTrue(Path(data["downloaded"]).name.endswith(".deb"))
+        self.assertTrue(Path(data["downloaded"]).name.endswith("cli-tar-9.9.9.tar.gz"))
         code, out, err = self.update("--download", body=b"another file")
         self.assertEqual(code, 1)
         self.assertIn("Scaricamento non riuscito", err)
 
     def test_an_installation_of_the_package_manager_is_not_offered_the_download(self):
-        self.server_announces()
+        self.server_announces(component="cli-deb13")
         with mock.patch("activitytrack.manifest.from_package_manager", return_value=True):
             # the same patches as update(), the package manager's installation on top
             with mock.patch("activitytrack.sync.Runner.refresh_update", return_value=""), \
-                    mock.patch("activitytrack.updates.component", return_value="cli-deb"):
+                    mock.patch("activitytrack.updates.distro", return_value="deb13"):
                 code, out, err = self.run_cli("update", "--download")
         self.assertEqual(code, 1)
         self.assertIn("gestore di pacchetti", err)
