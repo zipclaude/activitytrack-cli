@@ -121,6 +121,13 @@ def parser():
     c.add_argument("link", nargs="?", help=_(
         "il collegamento della pagina «Dispositivi» del web; senza, viene chiesto senza mostrarlo "
         "(«-»: letto dallo standard input)"))
+    c = sub.add_parser("update", help=_("controlla se il server ha una versione nuova (--download: la scarica)"))
+    c.add_argument("--check", action="store_true", help=_(
+        "solo controlla (predefinito); stato di uscita 10 se c'è una versione nuova"))
+    c.add_argument("--download", action="store_true", help=_(
+        "scarica il pacchetto e ne controlla l'impronta; non per chi ha installato dal gestore di pacchetti"))
+    c.add_argument("--channel", action="append", metavar="CANALE", help=_(
+        "canale in più di prod per questa volta (beta, test, dev…); si può ripetere"))
     sub.add_parser("unpair", help=_("dissocia il PC (i dati restano)"))
     sub.add_parser("interactive", help=_("modalità interattiva, a liste"))
     return p
