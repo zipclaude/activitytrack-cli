@@ -164,9 +164,12 @@ windows-exe:
     - $t = .\dist\activitytrack.exe --data $d status | Out-String
     - |
       if ($t -notmatch "Not paired") { throw "texts: $t" }
-    - $e = .\dist\activitytrack.exe --data $d --no-sync pause 2>&1 | Out-String
+    # pause writes to stderr: tolerated here (PowerShell 5.1 of the runner stops on it), only its text is read
     - |
+      $ErrorActionPreference = "Continue"
+      $e = (& .\dist\activitytrack.exe --data $d --no-sync pause 2>&1 | Out-String)
       if ($e -match "Attenzione") { throw "the command line's texts not translated: $e" }
+      $true
     - New-Item -ItemType Directory -Path pack | Out-Null
     - Copy-Item dist/activitytrack.exe, LICENSE, README.md pack/
     - Compress-Archive -Path pack/* -DestinationPath "dist/activitytrack-cli-$V-windows.zip"
