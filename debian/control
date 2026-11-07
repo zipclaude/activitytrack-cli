@@ -4,16 +4,16 @@ Priority: optional
 Maintainer: ActivityTrack <flavio-claude@zipman.it>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.7.0
-Homepage: https://github.com/zipclaude/activitytrack-cli
-Vcs-Git: https://github.com/zipclaude/activitytrack-cli.git
-Vcs-Browser: https://github.com/zipclaude/activitytrack-cli
+Homepage: https://gitlab.com/infraconsulting/activitytrack-cli
+Vcs-Git: https://gitlab.com/infraconsulting/activitytrack-cli.git
+Vcs-Browser: https://gitlab.com/infraconsulting/activitytrack-cli
 Rules-Requires-Root: no
 
 Package: activitytrack-cli
 Architecture: all
 Depends: ${misc:Depends},
  python3 (>= 3.11),
- python3-activitytrack (>= 0.9.6)
+ python3-activitytrack (>= 0.9.8)
 Description: ActivityTrack from the command line
  ActivityTrack records the work of freelancers and technicians: activities,
  travels, pauses and to-dos, on the Android app, on a web server of one's

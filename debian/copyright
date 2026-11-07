@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: activitytrack-cli
-Source: https://github.com/zipclaude/activitytrack-cli
+Source: https://gitlab.com/infraconsulting/activitytrack-cli
 
 Files: *
 Copyright: 2026 ActivityTrack contributors
