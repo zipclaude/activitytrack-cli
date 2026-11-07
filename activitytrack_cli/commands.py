@@ -326,7 +326,7 @@ def update(app, args, out):
     version = activitytrack.client()["version"]
     status = app.updates.check(channels=args.channel)
     text = texts.update_state(status, version)
-    if status.state in (updates.UNPAIRED, updates.UNTRUSTED, updates.ERROR):
+    if status.state in updates.FAILED:
         raise CliError(text)
     release = status.release
     data = {"installed": version, "state": status.state, "available": release is not None,

@@ -113,8 +113,17 @@ class CliTest(unittest.TestCase):
 
     def update(self, *argv, body=b"the package", as_json=False):
         class Down:
-            def exchange(self, *a, **kw):
-                return 200, body
+            """The server's files, streamed."""
+            status = 200
+
+            @contextlib.contextmanager
+            def stream(self, path, headers=None):
+                self.rest = body
+                yield self
+
+            def read(self, n=-1):
+                piece, self.rest = self.rest[:n], self.rest[n:]
+                return piece
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch("activitytrack.sync.Runner.refresh_update", return_value=""))
             stack.enter_context(mock.patch("activitytrack.session.Session.http", return_value=Down()))
@@ -129,6 +138,15 @@ class CliTest(unittest.TestCase):
         code, out, err = self.update()
         self.assertEqual(code, 1)
         self.assertIn("non è firmato", err)
+
+    def test_a_server_that_refuses_is_an_error_not_an_up_to_date_answer(self):
+        self.server_announces()
+        for answer, text in (("revoked", "revocato"), ("incompatible:server_too_old", "va aggiornato il server"),
+                             ("no route", "non raggiungibile")):
+            with mock.patch("activitytrack.sync.Runner.refresh_update", return_value=answer):
+                code, out, err = self.run_cli("update")
+            self.assertEqual(code, 1, answer)
+            self.assertIn(text, err)
 
     def test_update_check_and_its_exit_status(self):
         self.server_announces(version="0.0.1")
