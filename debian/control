@@ -13,7 +13,7 @@ Package: activitytrack-cli
 Architecture: all
 Depends: ${misc:Depends},
  python3 (>= 3.11),
- python3-activitytrack (>= 0.9.6)
+ python3-activitytrack (>= 0.9.8)
 Description: ActivityTrack from the command line
  ActivityTrack records the work of freelancers and technicians: activities,
  travels, pauses and to-dos, on the Android app, on a web server of one's
