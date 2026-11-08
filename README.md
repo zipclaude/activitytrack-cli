@@ -1,13 +1,13 @@
 # activitytrack-cli
 
-[ActivityTrack](https://gitlab.com/infraconsulting/activitytrack) from the command line: start,
+[ActivityTrack](https://gitlab.com/activitytrack/activitytrack) from the command line: start,
 pause and stop activities, complete them, list and work the to-dos, sync with
-[ActivityTrack Web](https://gitlab.com/infraconsulting/activitytrack-web).
+[ActivityTrack Web](https://gitlab.com/activitytrack/activitytrack-web).
 
-It is the same application as [ActivityTrack Desktop](https://gitlab.com/infraconsulting/activitytrack-desktop)
-and the text interface [activitytrack-tui](https://gitlab.com/infraconsulting/activitytrack-tui): they
+It is the same application as [ActivityTrack Desktop](https://gitlab.com/activitytrack/activitytrack-desktop)
+and the text interface [activitytrack-tui](https://gitlab.com/activitytrack/activitytrack-tui): they
 share the data folder, the pairing and the token, through the library
-[python3-activitytrack](https://gitlab.com/infraconsulting/python3-activitytrack). What the command line
+[python3-activitytrack](https://gitlab.com/activitytrack/python3-activitytrack). What the command line
 does shows at once in the tray icon.
 
 ```sh
@@ -29,7 +29,7 @@ shell's history (`pair -` reads it from the standard input, for scripts).
 
 ## Install
 
-From the [releases](https://gitlab.com/infraconsulting/activitytrack-cli/-/releases):
+From the [releases](https://gitlab.com/activitytrack/activitytrack-cli/-/releases):
 
 - **Debian 13 / 14, Ubuntu 24.04 / 26.04**: `sudo apt install ./python3-activitytrack_<version>-1-<distro>_all.deb ./activitytrack-cli_<version>-1-<distro>_all.deb`
   (the library from its own release);
@@ -40,7 +40,7 @@ From the [releases](https://gitlab.com/infraconsulting/activitytrack-cli/-/relea
 
 ```sh
 apt install python3-cryptography python3-keyring flake8
-git clone https://gitlab.com/infraconsulting/python3-activitytrack ../python3-activitytrack
+git clone https://gitlab.com/activitytrack/python3-activitytrack ../python3-activitytrack
 export PYTHONPATH=$PWD/../python3-activitytrack
 python3 -m activitytrack_cli --help
 python3 -m unittest discover -s tests -t .
