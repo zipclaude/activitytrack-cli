@@ -128,6 +128,8 @@ class CliTest(unittest.TestCase):
             stack.enter_context(mock.patch("activitytrack.sync.Runner.refresh_update", return_value=""))
             stack.enter_context(mock.patch("activitytrack.session.Session.http", return_value=Down()))
             stack.enter_context(mock.patch("activitytrack.manifest.from_package_manager", return_value=False))
+            # the package of a Linux installation, whatever the system the tests run on (on Windows it is cli-windows)
+            stack.enter_context(mock.patch("sys.platform", "linux"))
             return self.run_cli(*(["--json"] if as_json else []), "update", *argv)
 
     def test_update_needs_a_pairing_and_the_servers_key(self):
@@ -188,7 +190,7 @@ class CliTest(unittest.TestCase):
         with mock.patch("activitytrack.manifest.from_package_manager", return_value=True):
             # the same patches as update(), the package manager's installation on top
             with mock.patch("activitytrack.sync.Runner.refresh_update", return_value=""), \
-                    mock.patch("activitytrack.updates.distro", return_value="deb13"):
+                    mock.patch("activitytrack.updates.distro", return_value="deb13"), mock.patch("sys.platform", "linux"):
                 code, out, err = self.run_cli("update", "--download")
         self.assertEqual(code, 1)
         self.assertIn("gestore di pacchetti", err)
