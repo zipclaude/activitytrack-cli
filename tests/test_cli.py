@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import contextlib
+import hashlib
 import io
 import json
 import tempfile
@@ -74,6 +75,124 @@ class CliTest(unittest.TestCase):
         self.assertEqual((started["label"], started["client"]), ("Hotel · Rinnovo certificati", "Hotel"))
         self.assertEqual(self.json("todo", "done", t["id"])["state"], "done")
         self.assertEqual(self.json("todo", "list"), [])
+
+    # ---- updates from the paired server ----
+
+    def server_announces(self, version="9.9.9", beta=None, key="signer", component="cli-tar"):
+        """The data folder paired, with a manifest signed by the pinned key in the store."""
+        import datetime
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.x509.oid import NameOID
+        from activitytrack import manifest
+        from activitytrack.pairing import Account
+        from activitytrack.store import Store
+        k = ec.generate_private_key(ec.SECP256R1())
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "server")])
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(k.public_key())
+                .serial_number(1).not_valid_before(now).not_valid_after(now + datetime.timedelta(days=1))
+                .sign(k, hashes.SHA256()))
+        pem = k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                              serialization.NoEncryption())
+        chain = cert.public_bytes(serialization.Encoding.PEM)
+        self.sha = hashlib.sha256(b"the package").hexdigest()
+
+        def release(v, channel):
+            return {"version": v, "channel": channel, "packages": [
+                {"component": component, "url": "/api/v1/update/files/" + self.sha, "sha256": self.sha}]}
+        releases = [release(version, "prod")] + ([release(beta, "beta")] if beta else [])
+        fingerprint = manifest.fingerprint(cert.public_bytes(serialization.Encoding.DER))
+        store = Store(Path(self.dir.name) / "activitytrack.sqlite3")
+        store.set_state("account", Account("https://at.example.com", None, "d", "anna", "Anna", "user", "X",
+                                           fingerprint if key == "signer" else "cd" * 32).to_json())
+        store.set_state("update.manifest", manifest.sign({"issued": "2026-11-07T10:00:00Z", "releases": releases},
+                                                         pem, chain))
+        store.close()
+
+    def update(self, *argv, body=b"the package", as_json=False):
+        class Down:
+            """The server's files, streamed."""
+            status = 200
+
+            @contextlib.contextmanager
+            def stream(self, path, headers=None):
+                self.rest = body
+                yield self
+
+            def read(self, n=-1):
+                piece, self.rest = self.rest[:n], self.rest[n:]
+                return piece
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch("activitytrack.sync.Runner.refresh_update", return_value=""))
+            stack.enter_context(mock.patch("activitytrack.session.Session.http", return_value=Down()))
+            stack.enter_context(mock.patch("activitytrack.manifest.from_package_manager", return_value=False))
+            return self.run_cli(*(["--json"] if as_json else []), "update", *argv)
+
+    def test_update_needs_a_pairing_and_the_servers_key(self):
+        code, out, err = self.update()
+        self.assertEqual(code, 1)
+        self.assertIn("Non associato", err)
+        self.server_announces(key="other")
+        code, out, err = self.update()
+        self.assertEqual(code, 1)
+        self.assertIn("non è firmato", err)
+
+    def test_a_server_that_refuses_is_an_error_not_an_up_to_date_answer(self):
+        self.server_announces()
+        for answer, text in (("revoked", "revocato"), ("incompatible:server_too_old", "va aggiornato il server"),
+                             ("no route", "non raggiungibile")):
+            with mock.patch("activitytrack.sync.Runner.refresh_update", return_value=answer):
+                code, out, err = self.run_cli("update")
+            self.assertEqual(code, 1, answer)
+            self.assertIn(text, err)
+
+    def test_update_check_and_its_exit_status(self):
+        self.server_announces(version="0.0.1")
+        code, out, err = self.update()
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("ultima versione", out)
+        self.server_announces(version="9.9.9", beta="10.0.0-beta1")
+        code, out, err = self.update(as_json=True)
+        data = json.loads(out)
+        self.assertEqual(code, 10, err)
+        self.assertEqual((data["state"], data["version"], data["channel"], data["downloadable"]),
+                         ("available", "9.9.9", "prod", True))
+        code, out, err = self.update("--channel", "beta", as_json=True)
+        self.assertEqual((code, json.loads(out)["version"]), (10, "10.0.0-beta1"))
+        # said by the status too, from the last sync
+        self.assertIn("9.9.9", self.run_cli("status")[1])
+
+    def test_update_check_and_download_exclude_each_other(self):
+        self.server_announces()
+        with self.assertRaises(SystemExit) as stopped:
+            self.update("--check", "--download")
+        self.assertEqual(stopped.exception.code, 2)
+        folder = Path(self.dir.name) / "updates"
+        self.assertFalse(folder.exists() and list(folder.iterdir()))  # nothing was downloaded
+
+    def test_update_download_is_checked_against_the_sha256(self):
+        self.server_announces()
+        code, out, err = self.update("--download", as_json=True)
+        data = json.loads(out)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(Path(data["downloaded"]).read_bytes(), b"the package")
+        self.assertTrue(Path(data["downloaded"]).name.endswith("cli-tar-9.9.9.tar.gz"))
+        code, out, err = self.update("--download", body=b"another file")
+        self.assertEqual(code, 1)
+        self.assertIn("Scaricamento non riuscito", err)
+
+    def test_an_installation_of_the_package_manager_is_not_offered_the_download(self):
+        self.server_announces(component="cli-deb13")
+        with mock.patch("activitytrack.manifest.from_package_manager", return_value=True):
+            # the same patches as update(), the package manager's installation on top
+            with mock.patch("activitytrack.sync.Runner.refresh_update", return_value=""), \
+                    mock.patch("activitytrack.updates.distro", return_value="deb13"):
+                code, out, err = self.run_cli("update", "--download")
+        self.assertEqual(code, 1)
+        self.assertIn("gestore di pacchetti", err)
+        self.assertFalse((Path(self.dir.name) / "updates").exists())
 
     def test_errors(self):
         code, out, err = self.run_cli("pause")

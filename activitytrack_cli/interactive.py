@@ -5,8 +5,10 @@ terminal supports it. The same actions as the commands; every change is
 pushed at once.
 """
 
+import activitytrack
 from activitytrack import texts
 from activitytrack.i18n import _
+from activitytrack.manifest import ManifestError
 from activitytrack.work import STOP, TO_COMPLETE, TRAVEL, WORK, StartRequest, WorkError
 
 from activitytrack.app import InputError as CliError, describe_error, one_line, parse_when
@@ -29,7 +31,8 @@ def run(app, out, sync=True):
         options = [one_line(app.work.label(e)) for e in running]
         actions = [("entry", e) for e in running]
         for label, action in ((_("Nuova attività"), "new"), (_("Da fare"), "todos"),
-                              (_("Dettagli mancanti"), "missing"), (_("Sincronizza ora"), "sync")):
+                              (_("Dettagli mancanti"), "missing"), (_("Sincronizza ora"), "sync"),
+                              (_("Aggiornamenti"), "update")):
             options.append(out.paint(label, "bold"))
             actions.append((action, None))
         i = choose(out, "ActivityTrack", options, allow_back=False)
@@ -47,6 +50,9 @@ def run(app, out, sync=True):
                 _missing(app, out)
             elif kind == "sync":
                 _sync(app, out)
+                continue
+            elif kind == "update":
+                _update(app, out)
                 continue
         except (CliError, WorkError) as e:
             out.error(describe_error(e))
@@ -179,6 +185,17 @@ def _todos(app, out):
         app.todos.postpone(t["uid"])
     else:
         app.todos.set_ignored(t["uid"])
+
+
+def _update(app, out):
+    status = app.updates.check()
+    out.line(out.paint(texts.update_state(status, activitytrack.client()["version"]),
+                       "yellow" if status.release else "grey"))
+    if status.downloadable and confirm(out, _("Scaricare il pacchetto?"), default=True):
+        try:
+            out.line(_("Scaricato e controllato: %s") % app.updates.download(status.release))
+        except ManifestError as e:
+            out.error(_("Scaricamento non riuscito: %s") % e)
 
 
 def _missing(app, out):

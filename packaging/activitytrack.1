@@ -102,6 +102,24 @@ until its code is used or expires.
 reads it from the standard input, as does a standard input that is not a
 terminal.
 .TP
+.BR update " [\fB\-\-check\fR] [\fB\-\-download\fR] [\fB\-\-channel\fR \fIchannel\fR]"
+Ask the server this PC is paired with whether there is a newer version.
+The server's announcement is signed; it is accepted only with the key of
+the pairing link, so a PC paired with an older link (without the key), or
+an announcement signed by another key, is refused with the reason.
+.B \-\-check
+(the default) only tells; the exit status is 10 when a newer version is
+there.
+.B \-\-download
+fetches the package from the server and checks its SHA-256. An installation
+made by the package manager is told of the new version but is
+.I not
+offered the download: the package manager updates it.
+.B \-\-channel
+adds a channel to prod for this run (beta, test, dev; may be repeated); a
+policy that fixes the betas off keeps beta out. The setting that turns the
+check off is the desktop's (Impostazioni, Generale) and is respected.
+.TP
 .B unpair
 Unpair; the data stay.
 .SH ENVIRONMENT
@@ -117,6 +135,8 @@ The language (it, en, de, es), unless the policy fixes it.
 The data shared with the desktop application.
 .SH EXIT STATUS
 0 done; 1 refused or failed (the message says why, without a traceback:
-also for data that cannot be read); 2 wrong usage.
+also for data that cannot be read); 2 wrong usage; 10
+.B update
+found a newer version.
 .SH AUTHOR
 The ActivityTrack contributors, https://gitlab.com/infraconsulting/activitytrack-cli

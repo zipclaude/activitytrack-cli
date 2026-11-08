@@ -5,8 +5,10 @@ import getpass
 import json
 import sys
 
-from activitytrack import texts
+import activitytrack
+from activitytrack import texts, updates
 from activitytrack.i18n import _
+from activitytrack.manifest import ManifestError
 from activitytrack.pairing import PairError, PairLink
 from activitytrack.texts import hm
 from activitytrack.work import PAUSE, STOP, SUSPEND, TO_COMPLETE, TRAVEL, WORK, StartRequest
@@ -14,6 +16,8 @@ from activitytrack.work import PAUSE, STOP, SUSPEND, TO_COMPLETE, TRAVEL, WORK, 
 from activitytrack.app import InputError as CliError, parse_day, parse_minute, parse_when
 from .term import MODE_COLOURS
 
+# the exit status of "update": a newer version is there (0 nothing to do, 1 failed)
+UPDATE_AVAILABLE = 10
 PERIODS = {"today": -1, "24h": 24, "3d": 72, "7d": 168, "30d": 720, "all": 0}
 COMMANDS = {"pause": PAUSE, "resume": WORK, "travel": TRAVEL, "suspend": SUSPEND, "stop": STOP}
 WRITES = {"start", "pause", "resume", "travel", "suspend", "stop", "complete", "edit", "reopen", "delete", "todo"}
@@ -83,6 +87,9 @@ def show_entry(app, out, info):
 def status(app, args, out):
     running = [app.entry_info(e) for e in app.work.running()]
     sync = app.sync_info()
+    # what the last sync brought: no network here
+    known = app.updates.status()
+    news = texts.update_state(known, "") if known.state == updates.AVAILABLE else ""
 
     def text():
         if running:
@@ -93,6 +100,8 @@ def status(app, args, out):
             out.line(_("Nessuna attività in corso"))
         out.line()
         out.line(out.paint(sync["text"], "red" if sync["attention"] else "grey"))
+        if news:
+            out.line(out.paint(news + " " + _("(activitytrack update)"), "yellow"))
     _emit(args, out, {"running": running, "sync": sync}, text)
 
 
@@ -311,6 +320,31 @@ def sync(app, args, out):
     return 0 if state in ("ok", "idle") else 1
 
 
+def update(app, args, out):
+    """The paired server's announcement of a newer version (activitytrack#1): asked now, its signature
+    checked against the key of the pairing; --download fetches the package, its sha256 checked."""
+    version = activitytrack.client()["version"]
+    status = app.updates.check(channels=args.channel)
+    text = texts.update_state(status, version)
+    if status.state in updates.FAILED:
+        raise CliError(text)
+    release = status.release
+    data = {"installed": version, "state": status.state, "available": release is not None,
+            "version": release.version if release else None, "channel": release.channel if release else None,
+            "downloadable": status.downloadable, "text": text}
+    if args.download and release is not None:
+        if not status.downloadable:
+            raise CliError(text)
+        try:
+            data["downloaded"] = str(app.updates.download(release))
+        except ManifestError as e:
+            raise CliError(_("Scaricamento non riuscito: %s") % e) from None
+    _emit(args, out, data, lambda: (
+        out.line(out.paint(text, "yellow" if release else "grey")),
+        data.get("downloaded") and out.line(_("Scaricato e controllato: %s") % data["downloaded"])))
+    return UPDATE_AVAILABLE if release is not None and not args.download else 0
+
+
 def _pair_link(args):
     """
     The link: from the prompt, not shown (the code would stay in the shell's
@@ -349,6 +383,6 @@ def unpair(app, args, out):
 
 HANDLERS = {
     "status": status, "start": start, "complete": complete, "edit": edit, "reopen": reopen, "delete": delete,
-    "list": list_, "todo": todo, "sync": sync, "pair": pair, "unpair": unpair,
+    "list": list_, "todo": todo, "sync": sync, "update": update, "pair": pair, "unpair": unpair,
     **{name: command for name in COMMANDS},
 }
