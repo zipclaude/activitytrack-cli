@@ -164,6 +164,14 @@ class CliTest(unittest.TestCase):
         # said by the status too, from the last sync
         self.assertIn("9.9.9", self.run_cli("status")[1])
 
+    def test_update_check_and_download_exclude_each_other(self):
+        self.server_announces()
+        with self.assertRaises(SystemExit) as stopped:
+            self.update("--check", "--download")
+        self.assertEqual(stopped.exception.code, 2)
+        folder = Path(self.dir.name) / "updates"
+        self.assertFalse(folder.exists() and list(folder.iterdir()))  # nothing was downloaded
+
     def test_update_download_is_checked_against_the_sha256(self):
         self.server_announces()
         code, out, err = self.update("--download", as_json=True)
