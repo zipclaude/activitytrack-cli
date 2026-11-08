@@ -190,7 +190,8 @@ class CliTest(unittest.TestCase):
         with mock.patch("activitytrack.manifest.from_package_manager", return_value=True):
             # the same patches as update(), the package manager's installation on top
             with mock.patch("activitytrack.sync.Runner.refresh_update", return_value=""), \
-                    mock.patch("activitytrack.updates.distro", return_value="deb13"), mock.patch("sys.platform", "linux"):
+                    mock.patch("activitytrack.updates.distro", return_value="deb13"), \
+                    mock.patch("sys.platform", "linux"):
                 code, out, err = self.run_cli("update", "--download")
         self.assertEqual(code, 1)
         self.assertIn("gestore di pacchetti", err)
