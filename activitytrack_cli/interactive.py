@@ -6,7 +6,7 @@ pushed at once.
 """
 
 import activitytrack
-from activitytrack import texts, updates
+from activitytrack import texts
 from activitytrack.i18n import _
 from activitytrack.manifest import ManifestError
 from activitytrack.work import STOP, TO_COMPLETE, TRAVEL, WORK, StartRequest, WorkError
