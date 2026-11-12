@@ -66,18 +66,37 @@ def parser():
     s.add_argument("--others", choices=["suspend", "stop", "keep"], default="suspend",
                    help=_("le attività già in corso: sospese (predefinito), fermate o lasciate in corso"))
 
-    for name, text in (("pause", _("pausa")), ("resume", _("riprende il lavoro")), ("travel", _("viaggio")),
-                       ("suspend", _("sospende")), ("stop", _("ferma"))):
+    for name, text in (("pause", _("pausa")), ("resume", _("riprende (il lavoro, o ciò che c'era prima della pausa)")),
+                       ("travel", _("viaggio")), ("stop", _("ferma"))):
         c = sub.add_parser(name, help=text)
         c.add_argument("id", nargs="?", help=_("attività (se ce n'è più di una in corso)"))
         c.add_argument("--at", help=_("all'ora (HH:MM)"))
+        if name == "travel":
+            way = c.add_mutually_exclusive_group()
+            way.add_argument("--completed", dest="completed", action="store_true", default=None, help=_(
+                "da un'attività di lavoro: l'attività lavorativa è completata (si chiude e il viaggio è una nuova "
+                "attività)"))
+            way.add_argument("--not-completed", dest="completed", action="store_false", help=_(
+                "da un'attività di lavoro: non è completata (il viaggio continua nella stessa attività; "
+                "predefinito senza terminale)"))
+        if name == "stop":
+            way = c.add_mutually_exclusive_group()
+            way.add_argument("--return-trip", dest="choice", action="store_const", const="return", help=_(
+                "avvia il viaggio di ritorno: l'attività resta in corso"))
+            way.add_argument("--end", dest="choice", action="store_const", const="end", help=_(
+                "termina l'attività, senza chiedere del viaggio di ritorno"))
+            way.add_argument("--end-with-return", dest="choice", action="store_const", const="both", help=_(
+                "termina l'attività e aggiunge il viaggio di ritorno (serve poter modificare i tempi)"))
 
-    c = sub.add_parser("complete", help=_("completa un'attività con i dettagli mancanti"))
-    c.add_argument("id")
-    c.add_argument("-d", "--description")
-    c.add_argument("-c", "--client")
-    c.add_argument("--empty", action="store_true", help=_("chiudi anche senza descrizione"))
-    c.add_argument("--todo-done", action="store_true", help=_("il Da fare da cui veniva è completato"))
+    c = sub.add_parser("absence", help=_("registra un'assenza"))
+    c.add_argument("first", metavar=_("dal"), help=_("primo giorno"))
+    c.add_argument("last", metavar=_("al"), nargs="?", help=_("ultimo giorno (predefinito: il primo)"))
+    c.add_argument("--kind", choices=["absence", "holiday", "leave", "sick"], default="absence",
+                   help=_("assenza (predefinito), ferie, permesso, malattia"))
+    c.add_argument("--company", help=_("azienda (senza: tutte)"))
+    c.add_argument("--from-time", help=_("dalle (HH:MM)"))
+    c.add_argument("--to-time", help=_("alle (HH:MM)"))
+    c.add_argument("--notes", nargs="*", default=[], help=_("note"))
 
     c = sub.add_parser("edit", help=_("modifica un'attività"))
     c.add_argument("id")
@@ -89,11 +108,16 @@ def parser():
     c.add_argument("--notes")
     c.add_argument("-t", "--tag", action="append", help=_("i tag (sostituiscono quelli presenti)"))
 
-    c = sub.add_parser("reopen", help=_("riapre un'attività chiusa"))
+    c = sub.add_parser("reopen", help=_("riapre un'attività chiusa (chiede conferma)"))
     c.add_argument("id")
-    c = sub.add_parser("delete", help=_("elimina un'attività"))
+    c.add_argument("--travel", action="store_true", help=_("riapre in viaggio invece che al lavoro"))
+    c.add_argument("--at", help=_("dalle (HH:MM)"))
+    c.add_argument("--yes", action="store_true", help=_("senza chiedere conferma"))
+    c = sub.add_parser("delete", help=_("elimina un'attività (va nel cestino)"))
     c.add_argument("id")
     c.add_argument("--yes", action="store_true", help=_("senza chiedere conferma"))
+    c = sub.add_parser("restore", help=_("ripristina un'attività eliminata"))
+    c.add_argument("id")
 
     c = sub.add_parser("list", help=_("la lista della Home: Da fare e attività ferme"))
     _list_options(c)
@@ -109,7 +133,8 @@ def parser():
     e.add_argument("--title")
     _todo_fields(e)
     for name, text in (("start", _("avvia un'attività dal Da fare")), ("done", _("fatto")),
-                       ("ignore", _("ignora")), ("reopen", _("riapre")), ("delete", _("elimina"))):
+                       ("ignore", _("elimina (come delete)")), ("reopen", _("riapre o ripristina")),
+                       ("delete", _("elimina"))):
         x = tsub.add_parser(name, help=text)
         x.add_argument("id")
     x = tsub.add_parser("postpone", help=_("posticipa il piano"))
@@ -150,7 +175,8 @@ def _todo_fields(c):
     c.add_argument("--refs", help=_("riferimenti (ticket, link), separati da virgole"))
     c.add_argument("--due", help=_("scadenza: giorno [ora]"))
     c.add_argument("--plan", help=_("pianificazione: giorno [ora [durata in minuti]]"))
-    c.add_argument("--priority", type=int, choices=range(1, 6))
+    c.add_argument("--priority", type=int, choices=range(0, 6), metavar="0-5", help=_(
+        "priorità: 0 nessuna, 1 bassa, 2 media, 3 alta, 4 urgente, 5 emergenza"))
 
 
 def main(argv=None):

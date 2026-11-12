@@ -9,9 +9,10 @@ import activitytrack
 from activitytrack import texts
 from activitytrack.i18n import _
 from activitytrack.manifest import ManifestError
-from activitytrack.work import STOP, TO_COMPLETE, TRAVEL, WORK, StartRequest, WorkError
+from activitytrack import homelist, model
+from activitytrack.work import SUSPEND, TRAVEL, WORK, StartRequest, WorkError
 
-from activitytrack.app import InputError as CliError, describe_error, one_line, parse_when
+from activitytrack.app import InputError as CliError, describe_error, one_line, parse_day, parse_minute, parse_when
 from .commands import show_entry
 from .term import ask, choose, confirm
 
@@ -28,7 +29,7 @@ def run(app, out, sync=True):
             out.line(_("Nessuna attività in corso"))
         info = app.sync_info()
         out.line(out.paint(info["text"], "red" if info["attention"] else "grey"))
-        options = [one_line(app.work.label(e)) for e in running]
+        options = [one_line(app.label(e)) for e in running]
         actions = [("entry", e) for e in running]
         for label, action in ((_("Nuova attività"), "new"), (_("Da fare"), "todos"),
                               (_("Dettagli mancanti"), "missing"), (_("Sincronizza ora"), "sync"),
@@ -69,44 +70,51 @@ def _sync(app, out, quiet=False):
 
 
 def _entry(app, out, e):
-    commands = texts.entry_commands(e, app.work.policy)
-    labels = [label for label, _cmd in commands] + [_("Modifica la descrizione"), _("Modifica il cliente")]
-    i = choose(out, one_line(app.work.label(e)), labels)
+    work = app.work
+    actions = texts.entry_actions(work, e)
+    labels = [a.label for a in actions] + [_("Modifica la descrizione"), _("Modifica il cliente")]
+    i = choose(out, one_line(app.label(e)), labels)
     if i is None:
         return
-    if i < len(commands):
-        cmd = commands[i][1]
-        status = app.work.command(e["uid"], cmd)
-        if cmd == STOP and status == TO_COMPLETE:
-            _complete(app, out, app.work.entry(e["uid"]))
-    elif i == len(commands):
+    if i < len(actions):
+        _act(app, out, e, actions[i])
+    elif i == len(actions):
         text = ask(out, _("Descrizione"), e.get("activity") or "")
         if text is not None:
-            app.work.edit(e["uid"], activity=text)
+            work.edit(e["uid"], activity=text)
     else:
         client = _pick_client(app, out, e.get("clientUid"))
         if client is not None:
-            app.work.edit(e["uid"], client=client)
+            work.edit(e["uid"], client=client)
 
 
-def _complete(app, out, e):
-    """The stop sheet: description, client, the to-do done."""
-    out.line(out.paint(_("Completa l'attività"), "bold"))
-    text = ask(out, _("Descrizione"), e.get("activity") or "")
-    if text is None:
-        return
-    client = e.get("clientUid") or _pick_client(app, out, None)
-    app.work.edit(e["uid"], activity=text, client=client or "")
-    todo = app.store.get("todo", e["todoUid"]) if e.get("todoUid") else None
-    if todo and not todo.get("done") and confirm(out, _("Il Da fare «%s» è completato") % todo.get("title"), True):
-        app.todos.set_done(todo["uid"])
-    allow_empty = False
-    if not text:
-        allow_empty = confirm(out, _("Chiudere senza descrizione? Va bene quando il lavoro si capisce dal cliente."))
-        if not allow_empty:
-            out.line(_("Resta tra i dettagli mancanti."))
-            return
-    app.work.complete(e["uid"], allow_empty=allow_empty)
+def _act(app, out, e, action):
+    """One button of an activity, with the questions of §3: travel from work, the stop's three choices, reopen."""
+    work, uid, verb = app.work, e["uid"], action.verb
+    if verb == "travel_from_work":
+        work.travel_from_work(uid, confirm(out, _("Hai completato l'attività lavorativa?"), False))
+    elif verb == "stop":
+        if work.return_trip_offered(uid):
+            options = [_("Avvia viaggio di ritorno"), _("Termina l'attività")]
+            if work.return_trip_addable(uid):
+                options.append(_("Termina l'attività ed aggiungi il viaggio di ritorno"))
+            i = choose(out, _("Fermi l'attività"), options)
+            if i is None:
+                return
+            if i == 0:
+                work.travel_back(uid)
+            else:
+                work.stop(uid, return_trip=i == 2)
+        else:
+            work.stop(uid)
+    elif verb == "reopen":
+        if confirm(out, _("Riaprire «%s»?") % one_line(app.label(e))):
+            work.reopen(uid, action.kind)
+    elif verb == "delete":
+        if confirm(out, _("Eliminare «%s»? Si elimina anche sugli altri dispositivi.") % one_line(app.label(e))):
+            work.delete(uid)
+    else:
+        work.perform(uid, verb, action.kind)
 
 
 def _pick_client(app, out, current):
@@ -121,70 +129,105 @@ def _pick_client(app, out, current):
 
 
 def _new(app, out):
-    out.line(out.paint(_("Nuova attività"), "bold"))
-    text = ask(out, _("Descrizione"))
-    if text is None:
+    """The four modes (§3): Da fare, Lavoro, Viaggio, Assenza; Lavoro also in the past."""
+    work = app.work
+    modes = [(_("Da fare"), "todo"), (_("Lavoro"), "work"), (_("Lavoro passato"), "past")]
+    if work.policy.feature("travel"):
+        modes.append((_("Viaggio"), "travel"))
+    modes.append((_("Assenza"), "absence"))
+    i = choose(out, _("Nuova attività"), [m for m, _k in modes])
+    if i is None:
+        return
+    mode = modes[i][1]
+    if mode == "todo":
+        return _new_todo(app, out)
+    if mode == "absence":
+        return _new_absence(app, out)
+    text, client, tags = "", None, ""
+    if mode != "travel":
+        text = ask(out, _("Descrizione"))
+        if text is None:
+            return
+        client = _pick_client(app, out, None)
+        tags = ask(out, _("Tag (separati da virgole)")) or ""
+    start = end = None
+    if mode == "past":
+        start = parse_when(ask(out, _("Iniziata alle (HH:MM, o giorno e ora)")) or "")
+        end = parse_when(ask(out, _("Finita alle (HH:MM, o giorno e ora)")) or "")
+    elif mode == "work":
+        when = ask(out, _("Iniziata alle (vuoto: adesso)"))
+        start = parse_when(when) if when else None
+    req = StartRequest(activity=text, client=client, mode=TRAVEL if mode == "travel" else WORK,
+                       tags=[t.strip() for t in tags.split(",") if t.strip()], start_ms=start, end_ms=end)
+    running = [e for e in work.running() if work.open_segment(e["uid"]) is not None]
+    if end is None and running and work.policy.feature("concurrentEntries") and \
+            not confirm(out, _("Lasciare in corso le attività già avviate?")):
+        req.others = {e["uid"]: SUSPEND for e in running}
+    work.start(req)
+
+
+def _new_todo(app, out):
+    title = ask(out, _("Titolo"))
+    if not title:
         return
     client = _pick_client(app, out, None)
-    tags = ask(out, _("Tag (separati da virgole)")) or ""
-    mode = WORK
-    if app.work.policy.feature("travel") and confirm(out, _("È un viaggio?")):
-        mode = TRAVEL
-    when = ask(out, _("Iniziata alle (vuoto: adesso)"))
-    req = StartRequest(activity=text, client=client, mode=mode,
-                       tags=[t.strip() for t in tags.split(",") if t.strip()],
-                       start_ms=parse_when(when) if when else None)
-    running = [e for e in app.work.running() if e.get("status") == "ACTIVE"]
-    if running and app.work.policy.feature("concurrentEntries"):
-        keep = confirm(out, _("Lasciare in corso le attività già avviate?"))
-        if not keep:
-            req.others = {e["uid"]: "SUSPEND" for e in running if e.get("mode") != "PAUSE"}
-    app.work.start(req)
+    labels = [texts.PRIORITIES[p] for p in model.PRIORITIES]
+    p = choose(out, _("Priorità"), labels)
+    app.work.save_todo(None, title, client=client, priority=p or 0)
+
+
+def _new_absence(app, out):
+    kinds = list(texts.ABSENCE_KINDS)
+    i = choose(out, _("Tipo di assenza"), [texts.ABSENCE_KINDS[k] for k in kinds])
+    if i is None:
+        return
+    first = parse_day(ask(out, _("Dal giorno")) or "")
+    last = ask(out, _("Al giorno (vuoto: lo stesso)"))
+    times = ask(out, _("Dalle (HH:MM, vuoto: l'orario di lavoro)"))
+    end = ask(out, _("Alle (HH:MM)")) if times else None
+    company = None
+    if len(app.work.masters("company")) > 1:
+        c = choose(out, texts.FIELDS["company"], [r.get("name") or "" for r in app.work.masters("company")])
+        company = app.work.masters("company")[c]["uid"] if c is not None else None
+    app.work.save_absence(None, first, parse_day(last) if last else None, company=company, absence_kind=kinds[i],
+                          start_min=parse_minute(times) if times else None,
+                          end_min=parse_minute(end) if end else None)
 
 
 def _todos(app, out):
-    groups = app.todos.home(["TODO"], 0)
+    groups = homelist.home(app.work, ["TODO"], 0)
     items = [obj for _s, rows in groups for kind, obj, _x in rows if kind == "todo"]
     if not items:
         out.line(_("Nessun Da fare aperto."))
+    infos = [app.entry_info(t) for t in items]
     labels = []
-    for t in items:
-        info = app.todo_info(t)
-        colour = "red" if info["state"] == "overdue" else None
-        title = out.paint(info["title"], *(["bold", colour] if colour else ["bold"]))
-        labels.append(f"{title}  {out.paint(' · '.join(x for x in (info['client'], info['when']) if x), 'grey')}")
+    for info in infos:
+        title = out.paint(info["activity"], "bold")
+        extra = " · ".join(x for x in (info["client"], info["when"], info["priority_label"] if info["priority"] else "")
+                           if x)
+        labels.append(f"{out.state(info['display'], info['state'])}  {title}  {out.paint(extra, 'grey')}")
     labels.append(out.paint(_("Nuovo Da fare"), "bold"))
     i = choose(out, _("Da fare"), labels)
     if i is None:
         return
     if i == len(items):
-        title = ask(out, _("Titolo"))
-        if title:
-            client = _pick_client(app, out, None)
-            app.todos.save(None, title, client=client)
-        return
+        return _new_todo(app, out)
     t = items[i]
-    acts = [(_("Avvia"), "start"), (_("Fatto"), "done")]
+    acts = texts.entry_actions(app.work, t)
     if t.get("planDate") and app.work.policy.feature("planning"):
-        acts.append((_("Posticipa"), "postpone"))
-    if app.work.policy.feature("ignoreTodos"):
-        acts.append((_("Ignora"), "ignore"))
-    j = choose(out, t.get("title") or "", [a for a, _x in acts])
+        acts.append(texts.Action(_("Posticipa"), "postpone"))
+    j = choose(out, t.get("activity") or "", [a.label for a in acts])
     if j is None:
         return
-    act = acts[j][1]
-    if act == "start":
-        running = [e for e in app.work.running() if e.get("status") == "ACTIVE"]
-        # as the desktop: the ones at work or travelling suspended, a paused one left as it is
-        others = {e["uid"]: "SUSPEND" for e in running if e.get("mode") != "PAUSE"}
-        app.work.start(StartRequest(activity=t.get("title") or "", client=t.get("clientUid"),
-                                    company=t.get("companyUid"), todo=t["uid"], others=others))
-    elif act == "done":
-        app.todos.set_done(t["uid"])
-    elif act == "postpone":
-        app.todos.postpone(t["uid"])
+    a = acts[j]
+    if a.verb == "start":
+        running = [e for e in app.work.running() if app.work.open_segment(e["uid"]) is not None]
+        others = {e["uid"]: SUSPEND for e in running}
+        app.work.start(StartRequest(todo=t["uid"], mode=a.kind, others=others))
+    elif a.verb == "postpone":
+        app.work.postpone(t["uid"])
     else:
-        app.todos.set_ignored(t["uid"])
+        _act(app, out, t, a)
 
 
 def _update(app, out):
@@ -199,10 +242,10 @@ def _update(app, out):
 
 
 def _missing(app, out):
-    entries = [e for e in app.work.entries() if e.get("status") == TO_COMPLETE]
+    entries = [e for e in app.work.entries() if app.work.display(e)[0] == model.INCOMPLETE]
     if not entries:
         out.line(_("Nessuna attività con dettagli mancanti."))
         return
-    i = choose(out, _("Dettagli mancanti"), [one_line(app.work.label(e)) for e in entries])
+    i = choose(out, _("Dettagli mancanti"), [one_line(app.label(e)) for e in entries])
     if i is not None:
-        _complete(app, out, entries[i])
+        _entry(app, out, entries[i])

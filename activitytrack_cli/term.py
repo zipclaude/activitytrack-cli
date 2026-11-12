@@ -9,14 +9,15 @@ import os
 import shutil
 import sys
 
+from activitytrack import texts
 from activitytrack.i18n import _
 
 _codes = {
     "bold": "1", "dim": "2", "red": "31", "green": "32", "yellow": "33", "blue": "34", "magenta": "35",
-    "cyan": "36", "grey": "90",
+    "cyan": "36", "grey": "90", "white": "97",
+    # the app's orange, brown, pink and the tints of done and incomplete: 256 colours
+    "orange": "38;5;208", "brown": "38;5;130", "pink": "38;5;205", "greenish": "38;5;114", "reddish": "38;5;167",
 }
-# the app's colours of the modes and states
-MODE_COLOURS = {"WORK": "green", "PAUSE": "yellow", "TRAVEL": "blue", "SUSPENDED": "magenta", "TO_COMPLETE": "red"}
 
 
 def _windows_vt():
@@ -52,6 +53,11 @@ class Out:
         if not self.colour or not styles:
             return text
         return "\033[" + ";".join(_codes[s] for s in styles) + "m" + text + "\033[0m"
+
+    def state(self, display, label):
+        """The symbol and the label of a displayed state, in its colour (§2.2)."""
+        symbol = texts.DISPLAY_SYMBOLS.get(display, "")
+        return self.paint(f"{symbol} {label}".strip(), "bold", texts.DISPLAY_COLOURS.get(display, "white"))
 
     def line(self, text=""):
         print(text, file=self.stream)

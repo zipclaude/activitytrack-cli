@@ -35,45 +35,87 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0, err + out)
         return json.loads(out)
 
-    def test_an_activity_from_start_to_complete(self):
+    def test_an_activity_from_start_to_stop(self):
         started = self.json("start", "Configurazione", "VPN", "-c", "Comune di Valdora", "-t", "urgente,rete")
-        self.assertEqual((started["label"], started["mode"], started["tags"]),
-                         ("Comune di Valdora · Configurazione VPN", "WORK", ["urgente", "rete"]))
-        self.assertEqual(self.json("pause")["mode"], "PAUSE")
-        self.assertEqual(self.json("resume")["mode"], "WORK")
+        self.assertEqual((started["label"], started["mode"], started["tags"], started["display"]),
+                         ("Comune di Valdora · Configurazione VPN", "WORK", ["urgente", "rete"], "WORK"))
+        self.assertEqual(self.json("pause")["display"], "PAUSE")
+        self.assertEqual(self.json("resume")["display"], "WORK")
         status = self.json("status")
         self.assertEqual([r["id"] for r in status["running"]], [started["id"]])
         self.assertEqual(status["sync"]["state"], "idle")
-        # client and description: closed at once
-        self.assertEqual(self.json("stop")["status"], "CLOSED")
-        # without a description: left to complete, then completed
+        self.assertEqual(self.json("stop")["display"], "DONE")
+        # without a client the closed activity is INCOMPLETE, and a client completes it
         other = self.json("start", "-c", "Comune di Valdora")
-        self.assertEqual(self.json("stop", other["id"])["status"], "TO_COMPLETE")
-        done = self.json("complete", other["id"], "-d", "Cablaggio")
-        self.assertEqual((done["status"], done["activity"]), ("CLOSED", "Cablaggio"))
+        self.assertEqual(self.json("stop", other["id"])["display"], "DONE")
+        self.json("edit", other["id"], "-c", "")
+        self.assertEqual(self.json("list", "--period", "all", "--show", "missing")[0]["items"][0]["display"],
+                         "INCOMPLETE")
+        self.json("edit", other["id"], "-d", "Cablaggio", "-c", "Comune di Valdora")
         home = self.json("list", "--period", "all", "--show", "done")
         self.assertEqual(sum(len(g["items"]) for g in home), 2)
+        reopened = self.json("reopen", "--yes", other["id"])
+        self.assertEqual(reopened["display"], "WORK")
+        self.json("stop", other["id"])
+        self.assertEqual(self.json("delete", "--yes", other["id"])["deleted"], other["uid"])
+        self.assertEqual(self.json("restore", other["id"])["display"], "DONE")
 
     def test_the_activities_running_when_another_starts(self):
         a = self.json("start", "A", "-c", "Uno")
         b = self.json("start", "B", "-c", "Due")
         self.json("pause", b["id"])
         c = self.json("start", "C", "-c", "Tre")
-        modes = {r["id"]: (r["status"], r["mode"]) for r in self.json("status")["running"]}
-        # the one at work suspended, the paused one left as it is (as the desktop)
-        self.assertEqual(modes[a["id"]], ("SUSPENDED", None))
-        self.assertEqual(modes[b["id"]], ("ACTIVE", "PAUSE"))
-        self.assertEqual(modes[c["id"]], ("ACTIVE", "WORK"))
+        shown = {r["id"]: r["display"] for r in self.json("status")["running"]}
+        # the one at work and the paused one are both suspended (§3)
+        self.assertEqual(shown, {a["id"]: "SUSPENDED", b["id"]: "SUSPENDED", c["id"]: "WORK"})
+        self.assertEqual(self.json("resume", a["id"])["display"], "WORK")
+
+    def test_there_is_no_suspend_command(self):
+        with self.assertRaises(SystemExit):
+            self.run_cli("suspend")
+
+    def test_travel_from_work_asks_whether_the_work_is_complete(self):
+        a = self.json("start", "A", "-c", "Uno")
+        # without a flag a script gets "not completed": the same activity travels
+        first = self.json("travel")
+        self.assertEqual((first["uid"], first["display"]), (a["uid"], "TRAVEL"))
+        self.json("resume", a["id"])
+        other = self.json("travel", "--completed", a["id"])
+        self.assertNotEqual(other["uid"], a["uid"])
+        self.assertEqual((other["display"], other["client"]), ("TRAVEL", ""))
+        self.assertEqual(self.json("list", "--period", "all", "--show", "done")[0]["items"][0]["uid"], a["uid"])
+
+    def test_the_stop_choices_with_a_return_trip(self):
+        self.json("start", "-c", "Uno", "--travel")
+        a = self.json("resume")["uid"][:6]
+        with mock.patch("activitytrack.work.Work.return_trip_offered", return_value=True):
+            self.assertEqual(self.json("stop", "--return-trip", a)["display"], "TRAVEL")
+        self.assertEqual(self.json("stop", "--end", a)["display"], "DONE")
+
+    def test_an_absence(self):
+        a = self.json("absence", "2026-11-12", "2026-11-13", "--kind", "holiday", "--from-time", "9:00",
+                      "--to-time", "13:00", "--notes", "mare")
+        self.assertEqual((a["display"], a["absence_kind"], a["absence_min"], a["label"]),
+                         ("ABSENCE", "HOLIDAY", 480, "Ferie · mare"))
 
     def test_to_dos(self):
         t = self.json("todo", "add", "Rinnovo", "certificati", "-c", "Hotel", "--plan", "domani 9:30 45",
                       "--priority", "2")
-        self.assertEqual((t["title"], t["priority"], t["plan_start_min"], t["duration_min"]),
-                         ("Rinnovo certificati", 2, 570, 45))
+        self.assertEqual((t["activity"], t["priority"], t["priority_label"], t["plan_start_min"], t["duration_min"]),
+                         ("Rinnovo certificati", 2, "Media", 570, 45))
         self.assertEqual(self.json("todo", "postpone", t["id"], "30")["plan_start_min"], 600)
+        edited = self.json("todo", "edit", t["id"], "--priority", "5")
+        self.assertEqual((edited["priority_label"], edited["client"], edited["plan_start_min"]),
+                         ("Emergenza", "Hotel", 600))
         started = self.json("todo", "start", t["id"][:4])
         self.assertEqual((started["label"], started["client"]), ("Hotel · Rinnovo certificati", "Hotel"))
-        self.assertEqual(self.json("todo", "done", t["id"])["state"], "done")
+        self.json("stop", t["id"])
+        u = self.json("todo", "add", "Altro")
+        self.assertEqual(self.json("todo", "done", u["id"])["display"], "DONE")
+        self.assertEqual(self.json("todo", "reopen", u["id"])["display"], "TODO")
+        self.assertEqual(self.json("todo", "ignore", u["id"])["display"], "DELETED")
+        self.assertEqual(self.json("todo", "reopen", u["id"])["display"], "TODO")
+        self.json("todo", "done", u["id"])
         self.assertEqual(self.json("todo", "list"), [])
 
     # ---- updates from the paired server ----

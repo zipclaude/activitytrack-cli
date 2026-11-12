@@ -1,7 +1,7 @@
 # activitytrack-cli
 
 [ActivityTrack](https://gitlab.com/activitytrack/activitytrack) from the command line: start,
-pause and stop activities, complete them, list and work the to-dos, sync with
+pause and stop activities, record absences, list and work the to-dos, sync with
 [ActivityTrack Web](https://gitlab.com/activitytrack/activitytrack-web).
 
 It is the same application as [ActivityTrack Desktop](https://gitlab.com/activitytrack/activitytrack-desktop)
@@ -14,7 +14,9 @@ does shows at once in the tray icon.
 activitytrack pair                                     # paste the link of the web's Dispositivi page
 activitytrack start Configurazione VPN -c "Comune di Valdora" -t urgente
 activitytrack pause; activitytrack resume
-activitytrack stop                                     # complete it if details are missing
+activitytrack travel                                   # asks if the work is complete
+activitytrack stop                                     # offers the return trip when it applies
+activitytrack absence domani --kind holiday            # Assenza, Ferie, Permesso, Malattia
 activitytrack list                                     # the Home: to-dos and stopped activities
 activitytrack todo add Rinnovo certificati -c Hotel --plan "domani 9:30 45"
 activitytrack todo start b84

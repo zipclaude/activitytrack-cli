@@ -17,7 +17,7 @@ Every change is pushed to the server at the end of the command; without a
 network it leaves with the next sync. Without a command it shows the
 activities running.
 .PP
-Activities and to-dos are named by the first characters of the id the
+Activities, absences and to-dos are named by the first characters of the id the
 listings show (at least 3). Times are
 .I HH:MM
 (today) or a day and a time; days are
@@ -65,27 +65,69 @@ records an activity already done. The activities running are suspended,
 unless
 .BR \-\-others .
 .TP
-.BR pause ", " resume ", " travel ", " suspend ", " stop " [\fIid\fR] [\fB\-\-at\fR \fItime\fR]"
-A command on the activity running (or the one named).
+.BR pause ", " resume ", " travel ", " stop " [\fIid\fR] [\fB\-\-at\fR \fItime\fR]"
+A command on the activity running (or the one named). There is no command
+to suspend: an activity is suspended when another one starts.
+.B resume
+goes back to work, or from a pause to what was open before it, or restarts a
+suspended activity.
+.B travel
+from work asks "Hai completato l'attività lavorativa?": yes closes the
+activity and starts a new anonymous one travelling, no switches to travel in
+the same one. Scripts (and
+.BR \-\-json )
+choose with
+.B \-\-completed
+or
+.BR \-\-not\-completed ,
+the default without a terminal.
+.B stop
+of an activity that travelled out and worked, and has no return travel, asks
+three choices: start the return trip (the activity stays running), end it, end
+it and add the return trip (as long as the outbound one; needs editable
+times). Scripts give
+.BR \-\-return\-trip ,
+.B \-\-end
+or
+.BR \-\-end\-with\-return ;
+without a flag and a terminal it just ends.
 .TP
-.BR complete " \fIid\fR [\fB\-d\fR \fIdescription\fR] [\fB\-c\fR \fIclient\fR] [\fB\-\-empty\fR] [\fB\-\-todo\-done\fR]"
-Complete an activity whose details were missing.
+.BR absence " \fIfirst\fR [\fIlast\fR] [\fB\-\-kind\fR absence|holiday|leave|sick] [\fB\-\-company\fR \fIid\fR] [\fB\-\-from\-time\fR \fItime\fR \fB\-\-to\-time\fR \fItime\fR] [\fB\-\-notes\fR \fItext\fR]"
+Record an absence (Assenza, Ferie, Permesso, Malattia) from the first to the
+last day. Without a company it holds for all of them. Without times there is
+one entry per working day of the schedule (days off are skipped); with times,
+those on each day.
 .TP
 .BR edit " \fIid\fR [\fB\-d\fR] [\fB\-c\fR] [\fB\-\-company\fR] [\fB\-\-role\fR] [\fB\-\-locality\fR] [\fB\-\-notes\fR] [\fB\-t\fR]"
 Change an activity.
 .TP
-.BR reopen ", " delete " \fIid\fR"
-Reopen a closed activity; delete one (asks, unless \fB\-\-yes\fR; with
-\fB\-\-json\fR it does not ask).
+.BR reopen ", " delete ", " restore " \fIid\fR"
+Reopen a closed activity (asks, unless \fB\-\-yes\fR; \fB\-\-travel\fR reopens
+travelling); delete one into the bin (asks, unless \fB\-\-yes\fR; with
+\fB\-\-json\fR it does not ask); restore one from the bin.
 .TP
 .BR list " [\fB\-\-period\fR today|24h|3d|7d|30d|all] [\fB\-\-show\fR todo,missing,done,ignored] [\fB\-\-company\fR \fIid\fR] [\fB\-\-tag\fR \fItag\fR]"
-The Home list of the app: to-dos and stopped activities.
+The Home list of the app: to-dos and stopped activities. Each shows its state
+as a symbol and a label in the colour of the app: Da fare, Pianificata, In
+ritardo, In lavoro, In viaggio, In pausa, Sospesa, Chiusa, Dettagli mancanti,
+Assenza, Eliminata. The state
+.B ignored
+of \fB\-\-show\fR lists the deleted ones.
 .TP
-.BR "todo list" ", " "todo add" " \fItitle\fR [\fB\-c\fR] [\fB\-\-due\fR \fIday\fR [\fItime\fR]] [\fB\-\-plan\fR \fIday\fR [\fItime\fR [\fIminutes\fR]]] [\fB\-\-priority\fR 1-5] [\fB\-\-notes\fR] [\fB\-\-refs\fR]"
+.BR "todo list" ", " "todo add" " \fItitle\fR [\fB\-c\fR] [\fB\-\-due\fR \fIday\fR [\fItime\fR]] [\fB\-\-plan\fR \fIday\fR [\fItime\fR [\fIminutes\fR]]] [\fB\-\-priority\fR 0-5] [\fB\-\-notes\fR] [\fB\-\-refs\fR]"
 The to-dos; a new one.
 .TP
 .BR "todo edit" ", " start ", " done ", " ignore ", " reopen ", " postpone " [\fIminutes\fR], " delete " \fIid\fR"
-Work a to-do.
+Work a to-do:
+.B done
+ticks it off,
+.B ignore
+and
+.B delete
+put it into the bin,
+.B reopen
+unticks or restores it. The priority is 0 none, 1 low, 2 medium, 3 high, 4
+urgent, 5 emergency (shown by its name).
 .B todo delete
 does not ask for a confirmation.
 .TP

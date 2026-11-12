@@ -11,21 +11,23 @@ from activitytrack.i18n import _
 from activitytrack.manifest import ManifestError
 from activitytrack.pairing import PairError, PairLink
 from activitytrack.texts import hm
-from activitytrack.work import PAUSE, STOP, SUSPEND, TO_COMPLETE, TRAVEL, WORK, StartRequest
+from activitytrack import homelist, model
+from activitytrack.work import PAUSE, STOP, SUSPEND, TRAVEL, WORK, StartRequest
 
 from activitytrack.app import InputError as CliError, parse_day, parse_minute, parse_when
-from .term import MODE_COLOURS
+from .term import choose, confirm
 
 # the exit status of "update": a newer version is there (0 nothing to do, 1 failed)
 UPDATE_AVAILABLE = 10
 PERIODS = {"today": -1, "24h": 24, "3d": 72, "7d": 168, "30d": 720, "all": 0}
-COMMANDS = {"pause": PAUSE, "resume": WORK, "travel": TRAVEL, "suspend": SUSPEND, "stop": STOP}
-WRITES = {"start", "pause", "resume", "travel", "suspend", "stop", "complete", "edit", "reopen", "delete", "todo"}
+COMMANDS = {"pause": PAUSE, "resume": WORK, "travel": TRAVEL, "stop": STOP}
+WRITES = {"start", "pause", "resume", "travel", "stop", "edit", "reopen", "delete", "restore", "absence", "todo"}
+ABSENCE_KINDS = {"absence": model.ABSENCE, "holiday": "HOLIDAY", "leave": "LEAVE", "sick": "SICK"}
 
 
 def dispatch(app, args, out):
     command = args.command or "status"
-    if command in ("start", "complete", "edit", "reopen", "delete", "todo", *COMMANDS) and not app.paired:
+    if command in WRITES and not app.paired:
         # the data stay local until a pairing: allowed, but said
         out.error(_("Attenzione: il PC non è associato a un server; i dati restano qui."))
     handler = HANDLERS[command]
@@ -72,12 +74,16 @@ def _after_change(app, args, out):
 # ---- status ----
 
 def show_entry(app, out, info):
-    colour = MODE_COLOURS.get(info["mode"] if info["status"] == "ACTIVE" else info["status"], "grey")
     since = info["since"][11:16] if info["since"] else ""
-    parts = [out.paint(info["state"], "bold", colour) + (" " + _("dalle %s") % since if since else "")]
-    parts.append(f"{texts.KINDS[WORK]} {hm(info['work_min'] * 60_000)}")
+    parts = [out.state(info["display"], info["state"]) + (" " + _("dalle %s") % since if since else "")]
+    if info["kind"] == model.ABSENCE:
+        parts.append(f"{texts.KINDS[model.ABSENCE]} {hm(info['absence_min'] * 60_000)}")
+    else:
+        parts.append(f"{texts.KINDS[WORK]} {hm(info['work_min'] * 60_000)}")
     if info["travel_min"]:
         parts.append(f"{texts.KINDS[TRAVEL]} {hm(info['travel_min'] * 60_000)}")
+    if info["priority"]:
+        parts.append(info["priority_label"])
     if info["needs_review"]:
         parts.append(out.paint(_("da verificare"), "red"))
     out.line(f"  {out.paint(info['id'], 'cyan')}  {out.paint(info['label'], 'bold')}")
@@ -115,50 +121,100 @@ def _tags(values):
 
 
 def start(app, args, out):
-    todo = app.find("todo", args.todo)["uid"] if args.todo else None
+    todo = app.find("entry", args.todo)["uid"] if args.todo else None
     req = StartRequest(activity=" ".join(args.description), client=args.client, company=args.company,
                        role=args.role, tags=_tags(args.tag), mode=TRAVEL if args.travel else WORK, todo=todo,
                        start_ms=parse_when(args.at) if args.at else None,
                        end_ms=parse_when(args.until) if args.until else None)
-    if todo and not args.description:
-        req.activity = app.store.get("todo", todo).get("title") or ""
-    if todo and not args.client:
-        t = app.store.get("todo", todo)
-        req.client, req.company = t.get("clientUid"), t.get("companyUid")
     if args.until is None and args.others != "keep":
-        cmd = SUSPEND if args.others == "suspend" else STOP
-        # a paused activity cannot be suspended: left as it is, as the desktop does (stopped with --others stop)
-        req.others = {e["uid"]: cmd for e in app.work.running()
-                      if e.get("status") == "ACTIVE" and (cmd == STOP or e.get("mode") != PAUSE)}
+        # a paused activity is suspended as well (§3)
+        req.others = {e["uid"]: SUSPEND if args.others == "suspend" else STOP for e in app.work.running()
+                      if app.work.open_segment(e["uid"]) is not None}
     uid = app.work.start(req)
     info = app.entry_info(app.work.entry(uid))
     _emit(args, out, info, lambda: (out.line(_("Avviata:")), show_entry(app, out, info)))
 
 
+def _interactive(args):
+    """Questions are asked only in text mode on a terminal; a script gets the plain answer."""
+    return not args.json and sys.stdin.isatty()
+
+
+def _at(args):
+    return parse_when(args.at) if args.at else None
+
+
 def command(app, args, out):
-    cmd = COMMANDS[args.command]
-    e = app.running_one(args.id, active_only=cmd != WORK)
-    status_ = app.work.command(e["uid"], cmd, at=parse_when(args.at) if args.at else None,
-                               exact=bool(args.at))
-    info = app.entry_info(app.work.entry(e["uid"]))
+    """pause, resume, travel, stop: the named commands of the library by the state of the activity."""
+    work = app.work
+    cmd = args.command
+    e = app.running_one(args.id, active_only=cmd not in ("resume", "travel", "stop"))
+    uid, at, exact = e["uid"], _at(args), bool(args.at)
+    seg = work.open_segment(uid)
+    if cmd == "pause":
+        work.switch(uid, PAUSE, at, exact)
+    elif cmd == "resume":
+        # from a pause the kind before it; suspended, work (or the kind open elsewhere: nothing to do)
+        if seg is None:
+            work.resume(uid, WORK, at, exact)
+        else:
+            work.switch(uid, work.resume_kind(uid) if seg["kind"] == PAUSE else WORK, at, exact)
+    elif cmd == "travel":
+        if work.asks_completion(uid):
+            completed = args.completed
+            if completed is None:
+                completed = (_interactive(args) and
+                             confirm(out, _("Hai completato l'attività lavorativa?"), False))
+            uid = work.travel_from_work(uid, completed, at)
+        elif seg is None:
+            work.resume(uid, TRAVEL, at, exact)
+        else:
+            work.switch(uid, TRAVEL, at, exact)
+    else:
+        _stop(app, args, out, uid, at, exact)
+    info = app.entry_info(work.entry(uid))
+    _emit(args, out, info, lambda: show_entry(app, out, info))
 
-    def text():
-        show_entry(app, out, info)
-        if status_ == TO_COMPLETE:
-            out.line(out.paint(_("Mancano dei dettagli: completa con «activitytrack complete %s -d …».")
-                               % info["id"], "yellow"))
-    _emit(args, out, info, text)
+
+def _stop(app, args, out, uid, at, exact):
+    """Stop; when the return trip is offered (§3.2) the three choices, by flag or asked."""
+    work = app.work
+    choice = args.choice
+    if choice is None and work.return_trip_offered(uid) and _interactive(args):
+        options = [_("Avvia viaggio di ritorno"), _("Termina l'attività")]
+        if work.return_trip_addable(uid):
+            options.append(_("Termina l'attività ed aggiungi il viaggio di ritorno"))
+        i = choose(out, _("Fermi l'attività"), options)
+        if i is None:
+            raise CliError(_("Annullato."))
+        choice = ("return", "end", "both")[i]
+    if choice == "return":
+        work.travel_back(uid, at)
+    else:
+        work.stop(uid, at, exact, return_trip=choice == "both")
 
 
-def complete(app, args, out):
+def reopen(app, args, out):
     e = app.find("entry", args.id)
-    if args.description is not None or args.client is not None:
-        app.work.edit(e["uid"], activity=args.description, client=args.client)
-    if args.todo_done and e.get("todoUid"):
-        app.todos.set_done(e["todoUid"])
-    app.work.complete(e["uid"], allow_empty=args.empty)
+    if not args.yes and _interactive(args):
+        label = " ".join(app.label(e).split())
+        if not confirm(out, _("Riaprire «%s»?") % label):
+            return 0
+    app.work.reopen(e["uid"], TRAVEL if args.travel else WORK, _at(args), bool(args.at))
     info = app.entry_info(app.work.entry(e["uid"]))
-    _emit(args, out, info, lambda: (out.line(_("Completata:")), show_entry(app, out, info)))
+    _emit(args, out, info, lambda: show_entry(app, out, info))
+
+
+def absence(app, args, out):
+    first = parse_day(args.first)
+    last = parse_day(args.last) if args.last else None
+    start_min = parse_minute(args.from_time) if args.from_time else None
+    end_min = parse_minute(args.to_time) if args.to_time else None
+    company = app.find("company", args.company)["uid"] if args.company else None
+    uid = app.work.save_absence(None, first, last, company=company, absence_kind=ABSENCE_KINDS[args.kind],
+                                notes=" ".join(args.notes), start_min=start_min, end_min=end_min)
+    info = app.entry_info(app.work.entry(uid))
+    _emit(args, out, info, lambda: (out.line(_("Assenza registrata:")), show_entry(app, out, info)))
 
 
 def edit(app, args, out):
@@ -169,22 +225,21 @@ def edit(app, args, out):
     _emit(args, out, info, lambda: show_entry(app, out, info))
 
 
-def reopen(app, args, out):
-    e = app.find("entry", args.id)
-    app.work.command(e["uid"], "REOPEN")
-    info = app.entry_info(app.work.entry(e["uid"]))
-    _emit(args, out, info, lambda: show_entry(app, out, info))
-
-
 def delete(app, args, out):
     e = app.find("entry", args.id)
     if not args.yes and not args.json:
-        from .term import confirm
         label = " ".join(app.work.label(e).split())
         if not confirm(out, _("Eliminare «%s»? Si elimina anche sugli altri dispositivi.") % label):
             return 0
     app.work.delete(e["uid"])
     _emit(args, out, {"deleted": e["uid"]}, lambda: out.line(_("Eliminata.")))
+
+
+def restore(app, args, out):
+    e = app.find("entry", args.id)
+    app.work.restore(e["uid"])
+    info = app.entry_info(app.work.entry(e["uid"]))
+    _emit(args, out, info, lambda: (out.line(_("Ripristinata:")), show_entry(app, out, info)))
 
 
 # ---- the Home list and the to-dos ----
@@ -197,16 +252,15 @@ def home(app, args, out, todos_only=False):
             raise CliError(_("Stato sconosciuto in --show: «%s» (validi: %s).") % (s, ", ".join(SHOW)))
     show = [s.upper() for s in show]
     company = app.find("company", args.company)["uid"] if args.company else None
-    groups = app.todos.home(show, PERIODS[args.period], company, args.tag)
+    groups = homelist.home(app.work, show, PERIODS[args.period], company, args.tag)
     data = []
     for section, items in groups:
         rows = []
         for kind, obj, extra in items:
             if kind == "todo":
-                rows.append({"kind": "todo", **app.todo_info(obj)})
+                rows.append({"kind": "todo", **app.entry_info(obj)})
             elif not todos_only:
-                info = app.entry_info(obj)
-                rows.append({"kind": "entry", **info, "end": extra.isoformat(timespec="minutes")})
+                rows.append({"kind": "entry", **app.entry_info(obj), "end": extra.isoformat(timespec="minutes")})
         if rows:
             data.append({"section": section, "title": texts.SECTIONS[section], "items": rows})
 
@@ -216,16 +270,12 @@ def home(app, args, out, todos_only=False):
         for group in data:
             out.heading(group["title"])
             for r in group["items"]:
-                if r["kind"] == "todo":
-                    colour = "red" if r["state"] == "overdue" else "dim" if r["state"] in ("done", "ignored") else None
-                    who = " · ".join(x for x in (r["client"] or r["company"], r["state_label"],
-                                                 f"P{r['priority']}" if r["priority"] else "") if x)
-                    title = out.paint(r["title"], *(["bold"] + ([colour] if colour else [])))
-                    out.line(f"  {out.paint(r['id'], 'cyan')}  {title}  {out.paint(r['when'], 'grey')}")
-                    out.line(f"          {out.paint(who, colour or 'grey')}")
-                else:
-                    out.line(f"  {out.paint(r['id'], 'cyan')}  {r['label']}  {out.paint(r['end'][11:16], 'grey')}")
-                    out.line(f"          {out.paint(r['state'], 'red' if r['status'] == TO_COMPLETE else 'grey')}")
+                title = r["activity"] if r["kind"] == "todo" else r["label"]
+                right = r["when"] if r["kind"] == "todo" else r["end"][11:16]
+                who = " · ".join(x for x in (r["client"] or r["company"] if r["kind"] == "todo" else "",
+                                             r["priority_label"] if r["priority"] else "") if x)
+                out.line(f"  {out.paint(r['id'], 'cyan')}  {out.paint(title, 'bold')}  {out.paint(right, 'grey')}")
+                out.line(f"          {out.state(r['display'], r['state'])}" + (f" · {who}" if who else ""))
     _emit(args, out, data, text)
 
 
@@ -237,10 +287,10 @@ def _todo_kwargs(app, args, existing=None):
     t = existing or {}
     kw = dict(company=args.company if args.company is not None else t.get("companyUid"),
               client=args.client if args.client is not None else t.get("clientUid"),
+              role=t.get("roleUid"), locality=t.get("locality") or "", tags=t.get("tags") or (),
               notes=args.notes if args.notes is not None else (t.get("notes") or ""),
-              refs=("\n".join(r.strip() for r in args.refs.split(",")) if args.refs is not None
-                    else (t.get("refs") or "")),
-              priority=args.priority if args.priority is not None else t.get("priority"))
+              refs=("\n".join(r.strip() for r in args.refs.split(",")) if args.refs is not None else None),
+              priority=args.priority if args.priority is not None else (t.get("priority") or 0))
     if args.due is not None:
         parts = args.due.split() or [""]
         kw["due_date"] = parse_day(parts[0])
@@ -266,41 +316,41 @@ def _minutes(text):
 
 def todo(app, args, out):
     sub = args.todo_command or "list"
+    work = app.work
     if sub == "list":
         # "activitytrack todo" alone: every open to-do
         return home(app, args if hasattr(args, "period") else _defaults(args), out, todos_only=True)
     if sub == "add":
-        uid = app.todos.save(None, " ".join(args.title), **_todo_kwargs(app, args))
+        uid = work.save_todo(None, " ".join(args.title), **_todo_kwargs(app, args))
     elif sub == "edit":
-        t = app.find("todo", args.id)
-        uid = app.todos.save(t["uid"], args.title or t.get("title"), **_todo_kwargs(app, args, t))
+        t = app.find("entry", args.id)
+        uid = work.save_todo(t["uid"], args.title or t.get("activity"), **_todo_kwargs(app, args, t))
     else:
-        t = app.find("todo", args.id)
+        t = app.find("entry", args.id)
         uid = t["uid"]
         if sub == "start":
             args.description, args.client, args.company, args.role, args.tag = [], None, None, None, []
             args.travel, args.at, args.until, args.others, args.todo = False, None, None, "suspend", uid
             return start(app, args, out)
         if sub == "done":
-            app.todos.set_done(uid)
-        elif sub == "ignore":
-            app.todos.set_ignored(uid)
+            work.tick(uid)
+        elif sub in ("ignore", "delete"):
+            work.delete(uid)
         elif sub == "reopen":
-            app.todos.reopen(uid)
+            if t.get("deletedUtcMs") is not None:
+                work.restore(uid)
+            else:
+                work.untick(uid)
         elif sub == "postpone":
-            if app.todos.postpone(uid, args.minutes) is None:
+            if work.postpone(uid, args.minutes) is None:
                 raise CliError(_("Il Da fare non è pianificato: niente da posticipare."))
-        elif sub == "delete":
-            app.todos.delete(uid)
-            _emit(args, out, {"deleted": uid}, lambda: out.line(_("Eliminato.")))
-            return 0
-    info = app.todo_info(app.todos.todo(uid))
+    info = app.entry_info(work.entry(uid))
 
     def text():
         who = info["client"] or info["company"]
-        out.line(f"  {out.paint(info['id'], 'cyan')}  {out.paint(info['title'], 'bold')}  "
+        out.line(f"  {out.paint(info['id'], 'cyan')}  {out.paint(info['activity'], 'bold')}  "
                  f"{out.paint(info['when'], 'grey')}")
-        out.line(f"          {' · '.join(x for x in (who, info['state_label']) if x)}")
+        out.line(f"          {out.state(info['display'], info['state'])}" + (f" · {who}" if who else ""))
     _emit(args, out, info, text)
 
 
@@ -382,7 +432,7 @@ def unpair(app, args, out):
 
 
 HANDLERS = {
-    "status": status, "start": start, "complete": complete, "edit": edit, "reopen": reopen, "delete": delete,
-    "list": list_, "todo": todo, "sync": sync, "update": update, "pair": pair, "unpair": unpair,
+    "status": status, "start": start, "edit": edit, "reopen": reopen, "delete": delete, "restore": restore,
+    "absence": absence, "list": list_, "todo": todo, "sync": sync, "update": update, "pair": pair, "unpair": unpair,
     **{name: command for name in COMMANDS},
 }
