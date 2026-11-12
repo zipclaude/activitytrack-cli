@@ -192,6 +192,7 @@ class CliTest(unittest.TestCase):
             self.assertEqual(code, 1, answer)
             self.assertIn(text, err)
 
+    @mock.patch("activitytrack_cli.main.__version__", "0.9.9")  # a pre-release would follow the betas by itself
     def test_update_check_and_its_exit_status(self):
         self.server_announces(version="0.0.1")
         code, out, err = self.update()
