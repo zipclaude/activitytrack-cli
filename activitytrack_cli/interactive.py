@@ -152,8 +152,13 @@ def _new(app, out):
         tags = ask(out, _("Tag (separati da virgole)")) or ""
     start = end = None
     if mode == "past":
-        start = parse_when(ask(out, _("Iniziata alle (HH:MM, o giorno e ora)")) or "")
-        end = parse_when(ask(out, _("Finita alle (HH:MM, o giorno e ora)")) or "")
+        start = ask(out, _("Iniziata alle (HH:MM, o giorno e ora)"))
+        if not start:
+            return
+        end = ask(out, _("Finita alle (HH:MM, o giorno e ora)"))
+        if not end:
+            return
+        start, end = parse_when(start), parse_when(end)
     elif mode == "work":
         when = ask(out, _("Iniziata alle (vuoto: adesso)"))
         start = parse_when(when) if when else None

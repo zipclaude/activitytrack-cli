@@ -293,6 +293,47 @@ class CliTest(unittest.TestCase):
         self.assertIn("Collegamento di una versione", err)
 
 
+class InteractiveTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.env = mock.patch("activitytrack_cli.main.system_language", return_value="it")
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        i18n.set_language("it")
+        self.dir.cleanup()
+
+    def session(self, *answers):
+        """The interactive mode with these answers; the number of prompts left unanswered, the entries, stderr."""
+        answers = iter(answers)
+        err = io.StringIO()
+        with mock.patch("builtins.input", side_effect=lambda _prompt="": next(answers, "")), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = main(["--data", self.dir.name, "--no-sync", "interactive"])
+        self.assertEqual(code, 0)
+        self.assertEqual(list(answers), [])
+        from activitytrack.app import App
+        app = App(self.dir.name)
+        try:
+            return app.work.entries(), err.getvalue()
+        finally:
+            app.session.store.close()
+
+    def test_an_empty_time_cancels_the_command(self):
+        # new, past work, description, "another" client, its name, no tags, then the time left empty
+        entries, err = self.session("1", "3", "Rete", "1", "Uno", "", "")
+        self.assertEqual((entries, err), ([], ""))
+        # the end left empty
+        entries, err = self.session("1", "3", "Rete", "1", "Uno", "", "9:00", "")
+        self.assertEqual((entries, err), ([], ""))
+
+    def test_a_wrong_time_is_an_error_not_the_end_of_the_session(self):
+        entries, err = self.session("1", "3", "Rete", "1", "Uno", "", "ciao", "10:00")
+        self.assertEqual(entries, [])
+        self.assertIn("Orario non valido", err)
+
+
 class TermTest(unittest.TestCase):
     def setUp(self):
         from activitytrack_cli.term import Out
