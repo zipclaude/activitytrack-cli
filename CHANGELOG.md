@@ -31,7 +31,6 @@ and is final at the release.
   emergency).
 - Lists show absences, and every activity with the symbol, colour and name of its displayed
   state; `--show ignored` lists the deleted ones.
-- In the interactive mode an empty answer to a time cancels the command.
 
 ### Behaviour
 
