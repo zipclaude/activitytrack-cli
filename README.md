@@ -27,6 +27,10 @@ activitytrack --json status                            # for scripts
 `pair` asks for the link without showing it: given as an argument, it would stay in the
 shell's history (`pair -` reads it from the standard input, for scripts).
 
+When a command moves something you did not ask for (an end moved back, a planned return trip or segment
+removed), or the sync does not apply an edit after the realignment, it says so on the standard error, once;
+`--json` carries the messages in `"notices"`.
+
 `man activitytrack` has every command.
 
 ## Install

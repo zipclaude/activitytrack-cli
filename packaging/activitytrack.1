@@ -42,6 +42,10 @@ Print the result as JSON, for scripts. After a change the object has a
 field: the state of the sync that followed (ok, idle, offline, failed,
 revoked, incompatible), unpaired when the PC is not paired, null with
 .BR \-\-no\-sync .
+The notices (see
+.BR NOTICES )
+are in the array
+.BR notices .
 An error is an object with
 .B error
 (the message) and
@@ -164,6 +168,20 @@ check off is the desktop's (Impostazioni, Generale) and is respected.
 .TP
 .B unpair
 Unpair; the data stay.
+.SH NOTICES
+When a command moves something the user did not ask for (the end of an
+activity moved back to the start of the new one, a planned return trip or
+segment removed), the command says so on the standard error, after its
+result. The sync that follows a change tells the same way a change that it
+did not apply after the realignment with the server (a to-do closed or
+started on another device). A notice of the sync is told once and then
+dismissed; one that nothing dismisses goes after 7 days. With
+.B \-\-json
+they are all in
+.BR notices ,
+a list of messages, empty when there is none; in
+.B \-i
+they are printed after the command.
 .SH ENVIRONMENT
 .TP
 .B NO_COLOR
