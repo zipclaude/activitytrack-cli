@@ -162,10 +162,19 @@ def command(app, args, out):
     """pause, resume, travel, stop: the named commands of the library by the state of the activity."""
     work = app.work
     cmd = args.command
-    e = app.running_one(args.id, active_only=cmd not in ("resume", "travel", "stop"))
+    try:
+        e = app.running_one(args.id, active_only=cmd not in ("resume", "travel", "stop"))
+    except CliError:
+        if cmd != "pause":
+            raise
+        # nothing is being worked: pause falls back to the only one running, suspended (the tui's "p")
+        e = app.running_one(args.id)
     uid, at, exact = e["uid"], _at(args), bool(args.at)
     seg = work.open_segment(uid)
-    if cmd == "pause":
+    if cmd == "pause" and seg is None:
+        # a suspended activity has nothing to pause: it goes back to work, as "p" in the tui
+        work.resume(uid, WORK, at, exact)
+    elif cmd == "pause":
         work.switch(uid, PAUSE, at, exact)
     elif cmd == "resume":
         # from a pause the kind before it; suspended, work (or the kind open elsewhere: nothing to do)

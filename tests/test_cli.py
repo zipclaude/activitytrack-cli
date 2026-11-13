@@ -60,6 +60,16 @@ class CliTest(unittest.TestCase):
         self.assertEqual(self.json("delete", "--yes", other["id"])["deleted"], other["uid"])
         self.assertEqual(self.json("restore", other["id"])["display"], "DONE")
 
+    def test_pause_on_a_lone_suspended_activity_resumes_it(self):
+        a = self.json("start", "A", "-c", "Uno")
+        b = self.json("start", "B", "-c", "Due")
+        self.json("stop", b["id"])
+        self.assertEqual(self.json("status")["running"][0]["display"], "SUSPENDED")
+        # as the "p" key of the tui: nothing is being worked, so the suspended one goes back to work
+        self.assertEqual(self.json("pause")["display"], "WORK")
+        self.assertEqual(self.json("pause")["display"], "PAUSE")
+        self.assertEqual(a["id"], self.json("status")["running"][0]["id"])
+
     def test_the_activities_running_when_another_starts(self):
         a = self.json("start", "A", "-c", "Uno")
         b = self.json("start", "B", "-c", "Due")

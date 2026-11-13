@@ -40,6 +40,8 @@ and is final at the release.
   `--json` in the `"notices"` list of the answer.
 - The notices of the sync (a change that was not applied after the realignment) are printed
   once after a sync and then dismissed.
+- `pause` with nothing being worked acts on the only activity running, suspended, and
+  restarts it at work, as the key `p` of the terminal interface.
 
 Various bug fixes.
 
