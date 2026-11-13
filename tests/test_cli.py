@@ -312,3 +312,15 @@ class TermTest(unittest.TestCase):
             self.assertEqual(ask(self.out, "Descrizione", "VPN"), "VPN")
             # without a value to clear, a dash is a dash
             self.assertEqual(ask(self.out, "Descrizione"), "-")
+
+
+class Utf8Output(unittest.TestCase):
+    def test_a_code_page_output_is_switched_to_utf8(self):
+        # a pipe on Windows: the ANSI code page, which cannot write the status marks
+        from activitytrack_cli.main import _utf8_output
+        out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+        with mock.patch("sys.stdout", out), mock.patch("sys.stderr", io.StringIO()):
+            _utf8_output()
+            print("▶ ·", end="")
+        out.flush()
+        self.assertEqual(out.buffer.getvalue().decode("utf-8"), "▶ ·")

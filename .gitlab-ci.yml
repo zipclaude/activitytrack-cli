@@ -286,7 +286,7 @@ release:
         echo "ActivityTrack from the command line: the same application as ActivityTrack Desktop, on the same data and pairing."
         echo
         echo "- Debian 13 / 14, Ubuntu 24.04 / 26.04: \`apt install ./python3-activitytrack_*-<distro>_all.deb ./activitytrack-cli_${V}-${R}-<distro>_all.deb\`; the library [python3-activitytrack]($LIB_URL/-/releases/$LIB) is in its own release"
-        echo "- Windows 10 / 11: `activitytrack-cli-$V-windows.zip`: `activitytrack.exe`, to put in a folder of the PATH. Not signed: check it against SHA256SUMS"
+        echo "- Windows 10 / 11: \`activitytrack-cli-$V-windows.zip\`: \`activitytrack.exe\`, to put in a folder of the PATH. Not signed: check it against SHA256SUMS"
         echo "- Elsewhere: \`pip install activitytrack-cli-$V.tar.gz\` after the library"
       } > notes.md
     - |

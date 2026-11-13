@@ -179,8 +179,18 @@ def _todo_fields(c):
         "priorità: 0 nessuna, 1 bassa, 2 media, 3 alta, 4 urgente, 5 emergenza"))
 
 
+def _utf8_output():
+    """Write UTF-8 when the output is not: on Windows a pipe or a file gets the ANSI code page (cp1252), which has
+    no "▶" or "·", and the exe would stop with an encoding error."""
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+        if encoding != "utf8" and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    _utf8_output()
     activitytrack.set_client("ActivityTrackCli", __version__)
     # the data folder first: its policy may fix the language, set before the texts are built
     pre = argparse.ArgumentParser(add_help=False)
