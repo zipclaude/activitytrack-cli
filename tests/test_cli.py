@@ -70,6 +70,40 @@ class CliTest(unittest.TestCase):
         self.assertEqual(shown, {a["id"]: "SUSPENDED", b["id"]: "SUSPENDED", c["id"]: "WORK"})
         self.assertEqual(self.json("resume", a["id"])["display"], "WORK")
 
+    def test_a_command_tells_what_it_moved(self):
+        from datetime import datetime, timedelta
+        ahead = (datetime.now() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+        a = self.json("start", "Rete", "-c", "Uno")
+        self.json("stop", a["id"], "--at", ahead)
+        code, out, err = self.run_cli("start", "Cavi", "-c", "Due")
+        self.assertEqual(code, 0)
+        self.assertIn("La fine di «Rete» è stata anticipata all'inizio della nuova attività.", err)
+        # once: the next command has nothing to say; in JSON it is the "notices" of the answer
+        self.assertEqual(self.json("pause")["notices"], [])
+        b = self.json("status")["running"][0]
+        self.json("stop", b["id"], "--at", ahead)
+        started = self.json("start", "Cavi", "-c", "Due")
+        self.assertEqual(started["notices"], ["La fine di «Cavi» è stata anticipata all'inizio della nuova attività."])
+
+    def test_the_notices_of_a_sync_are_said_once_and_dismissed(self):
+        from activitytrack.app import App
+        from activitytrack_cli.commands import _after_change
+        app = App(self.dir.name)
+        try:
+            import time
+            app.session.store.set_state("sync.notices", [{"code": "edit_dropped", "title": "Ticket",
+                                                          "at": int(time.time() * 1000)}])
+            args = mock.Mock(no_sync=False, json=False)
+            out = mock.Mock()
+            with mock.patch.object(App, "paired", True), mock.patch.object(App, "sync", return_value=("ok", "")):
+                state, notices = _after_change(app, args, out)
+            self.assertEqual(state, "ok")
+            self.assertIn("«Ticket»", notices[0])
+            out.error.assert_called_once_with(notices[0])
+            self.assertEqual(app.session.store.notices(), [])
+        finally:
+            app.session.store.close()
+
     def test_there_is_no_suspend_command(self):
         with self.assertRaises(SystemExit):
             self.run_cli("suspend")

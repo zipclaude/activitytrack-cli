@@ -29,6 +29,8 @@ def run(app, out, sync=True):
             out.line(_("Nessuna attività in corso"))
         info = app.sync_info()
         out.line(out.paint(info["text"], "red" if info["attention"] else "grey"))
+        # the notices of the sync are in that line: said once
+        app.session.store.dismiss_notices()
         options = [one_line(app.label(e)) for e in running]
         actions = [("entry", e) for e in running]
         for label, action in ((_("Nuova attività"), "new"), (_("Da fare"), "todos"),
@@ -57,16 +59,27 @@ def run(app, out, sync=True):
                 continue
         except (CliError, WorkError) as e:
             out.error(describe_error(e))
+            _told(app, out)
             continue
+        _told(app, out)
         if sync and app.paired:
             _sync(app, out, quiet=True)
 
 
 def _sync(app, out, quiet=False):
     state, detail = app.sync(full=True)
-    if not quiet or state not in ("ok", "idle"):
-        ok = state in ("ok", "idle")
+    ok = state in ("ok", "idle")
+    if not quiet or not ok:
         out.line(out.paint(texts.sync_state(app.session, state, detail), "green" if ok else "red"))
+    elif texts.sync_notices(app.session):
+        out.line(out.paint(" ".join(texts.sync_notices(app.session)), "red"))
+    app.session.store.dismiss_notices()
+
+
+def _told(app, out):
+    """What the last command left to tell the user (an end moved back, a planned segment removed)."""
+    for text in app.work.take_notices():
+        out.error(text)
 
 
 def _entry(app, out, e):

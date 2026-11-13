@@ -36,9 +36,14 @@ def dispatch(app, args, out):
     args.held = [] if writes and args.json else None
     result = handler(app, args, out)
     if writes:
-        state = _after_change(app, args, out)
+        # what the command left to tell (an end moved back, a planned segment removed): stderr, or "notices"
+        notices = app.work.take_notices()
+        if not args.json:
+            for text in notices:
+                out.error(text)
+        state, sync_notices = _after_change(app, args, out)
         for data in args.held or []:
-            _print_json({**data, "sync": state} if isinstance(data, dict) else data)
+            _print_json({**data, "sync": state, "notices": notices + sync_notices} if isinstance(data, dict) else data)
     return result or 0
 
 
@@ -59,16 +64,25 @@ def _after_change(app, args, out):
     """
     The change leaves at once; without a network at the next sync. The
     state of the sync, None when not tried (--no-sync); in text a failure
-    is said on stderr, in JSON it is the "sync" of the answer.
+    is said on stderr, in JSON it is the "sync" of the answer. Returns
+    (state, the notices of the sync): said once, in text on stderr (a
+    failure's line already has them), in JSON as part of "notices", then
+    dismissed.
     """
     if not app.paired:
-        return "unpaired"
+        return "unpaired", []
     if args.no_sync:
-        return None
+        return None, []
     state, detail = app.sync(full=True)
-    if state not in ("ok", "idle") and not args.json:
+    failed = state not in ("ok", "idle")
+    if failed and not args.json:
         out.error(texts.sync_state(app.session, state, detail))
-    return state
+    notices = texts.sync_notices(app.session)
+    if notices and not failed and not args.json:
+        for text in notices:
+            out.error(text)
+    app.session.store.dismiss_notices()
+    return state, notices
 
 
 # ---- status ----
