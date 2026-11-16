@@ -43,6 +43,7 @@ and is final at the release.
   once after a sync and then dismissed.
 - `pause` with nothing being worked acts on the only activity running, suspended, and
   restarts it at work, as the key `p` of the terminal interface.
+- Licences: every source file carries its licence header, and the Windows zip carries the licences of what the executable bundles.
 
 Various bug fixes.
 
