@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Flavio Visentin <flavio-activitytrack@infraconsulting.it>
 # CI of activitytrack-cli on GitLab. No pipeline starts on its own (not on pushes or tags; a merge
 # request into next starts one, see workflow below): start one by hand ("Run pipeline" on a branch or tag) or with the pipelines API.
 # The Linux jobs run on the owner's runner (tag testvm, set in default below), free of
@@ -220,6 +222,8 @@ windows-exe:
       if ($e -match "Attenzione") { throw "the command line's texts not translated: $e" }
       $true
     - New-Item -ItemType Directory -Path pack | Out-Null
+    # the notices of what the executable bundles (issue #17)
+    - python packaging/third_party.py pack/third-party "ActivityTrack CLI" https://gitlab.com/activitytrack/activitytrack-cli
     - Copy-Item dist/activitytrack.exe, LICENSE, README.md pack/
     - Compress-Archive -Path pack/* -DestinationPath "dist/activitytrack-cli-$V-windows.zip"
   artifacts:
@@ -256,7 +260,8 @@ windows-wine-exe:
     - test -s dist/activitytrack.exe && ls -l dist/activitytrack.exe
     # built, not started (see windows-wine): the zip has the name of the real Windows job's
     - mkdir pack && cp dist/activitytrack.exe LICENSE README.md pack/
-    - (cd pack && wine python -m zipfile -c "../dist/activitytrack-cli-$V-windows.zip" activitytrack.exe LICENSE README.md)
+    - wine python packaging/third_party.py pack/third-party "ActivityTrack CLI" https://gitlab.com/activitytrack/activitytrack-cli
+    - (cd pack && wine python -m zipfile -c "../dist/activitytrack-cli-$V-windows.zip" activitytrack.exe LICENSE README.md third-party)
     - ls -l dist/*.zip
   artifacts:
     paths: ["dist/activitytrack-cli-*-windows.zip"]

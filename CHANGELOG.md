@@ -31,6 +31,8 @@ and is final at the release.
   emergency).
 - Lists show absences, and every activity with the symbol, colour and name of its displayed
   state; `--show ignored` lists the deleted ones.
+- The Windows zip carries, in its `third-party` folder, the licences of Python and of the libraries
+  the executable bundles, with the addresses of their sources (#17).
 
 ### Behaviour
 
