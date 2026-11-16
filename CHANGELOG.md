@@ -12,7 +12,7 @@ and is final at the release.
 ### Compatibility
 
 - Needs the library `python3-activitytrack` 1.0.0~rc-1 or later, and so a server on 1.0
-  (sync wire schema 3): with an older server the command says to update the server, and with
+  (sync wire schema 4, 3 before beta-2): with an older server the command says to update the server, and with
   an older app or PC it says to update.
 - The data migrate by themselves to the activity model when the store is first opened; the
   to-do is now an activity in the state "Da fare".
