@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Flavio Visentin <flavio-activitytrack@infraconsulting.it>
 """
 activitytrack: the commands. Every change goes to the shared data (the
 desktop shows it at once) and is pushed at the end of the command, unless

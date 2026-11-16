@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Flavio Visentin <flavio-activitytrack@infraconsulting.it>
 """
 The interactive mode: numbered lists to choose from, in colour when the
 terminal supports it. The same actions as the commands; every change is
