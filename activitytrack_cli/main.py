@@ -181,7 +181,7 @@ def _todo_fields(c):
     c.add_argument("--due", help=_("scadenza: giorno [ora]"))
     c.add_argument("--plan", help=_("pianificazione: giorno [ora [durata in minuti]]"))
     c.add_argument("--priority", type=int, choices=range(0, 6), metavar="0-5", help=_(
-        "priorità: 0 nessuna, 1 bassa, 2 media, 3 alta, 4 urgente, 5 emergenza"))
+        "priorità: 0 nessuna, 1 bassa, 2 media, 3 alta, 4 urgenza, 5 emergenza"))
 
 
 def _utf8_output():

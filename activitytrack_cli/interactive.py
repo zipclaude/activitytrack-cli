@@ -34,7 +34,7 @@ def run(app, out, sync=True):
         options = [one_line(app.label(e)) for e in running]
         actions = [("entry", e) for e in running]
         for label, action in ((_("Nuova attività"), "new"), (_("Da fare"), "todos"),
-                              (_("Dettagli mancanti"), "missing"), (_("Sincronizza ora"), "sync"),
+                              (_("Incompleta"), "missing"), (_("Sincronizza ora"), "sync"),
                               (_("Aggiornamenti"), "update")):
             options.append(out.paint(label, "bold"))
             actions.append((action, None))
@@ -262,8 +262,8 @@ def _update(app, out):
 def _missing(app, out):
     entries = [e for e in app.work.entries() if app.work.display(e)[0] == model.INCOMPLETE]
     if not entries:
-        out.line(_("Nessuna attività con dettagli mancanti."))
+        out.line(_("Nessuna attività incompleta."))
         return
-    i = choose(out, _("Dettagli mancanti"), [one_line(app.label(e)) for e in entries])
+    i = choose(out, _("Incompleta"), [one_line(app.label(e)) for e in entries])
     if i is not None:
         _entry(app, out, entries[i])
